@@ -1,6 +1,6 @@
 /* Magnus Restaurang CRM v11 */
 
-const APP_VERSION = "v11";
+const APP_VERSION = "v12";
 const APP_NAME = "Magnus Restaurang CRM";
 const SWIPE_DELETE_WIDTH = 80;
 
@@ -686,18 +686,6 @@ async function renderDetail(id) {
                <p class="swipe-hint">Swipe left on staff to delete</p>`
         }
       </div>
-
-      <div class="section">
-        <div class="section-title">Danger Zone</div>
-        <div id="restaurant-delete-swipe">
-        ${wrapSwipeRow(`
-          <div class="danger-row">
-            <span>Delete Restaurant</span>
-          </div>
-        `)}
-        </div>
-        <p class="swipe-hint">Swipe left to delete this restaurant</p>
-      </div>
     </main>
   `;
 
@@ -708,22 +696,6 @@ async function renderDetail(id) {
   const addressNav = app.querySelector("#address-nav");
   if (addressNav) {
     addressNav.addEventListener("click", () => showNavigationPicker(restaurant));
-  }
-
-  const dangerSwipe = app.querySelector("#restaurant-delete-swipe .swipe-row");
-  if (dangerSwipe) {
-    bindSwipeRow(dangerSwipe, {
-      onDelete: () => {
-        confirmDelete(
-          `Delete ${restaurant.name}?`,
-          "This removes the restaurant and all its staff.",
-          async () => {
-            await deleteRestaurant(id);
-            navigate({ view: "list" });
-          }
-        );
-      },
-    });
   }
 
   app.querySelectorAll(".staff-list .swipe-row").forEach((row) => {

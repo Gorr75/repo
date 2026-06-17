@@ -233,14 +233,6 @@ textarea {
   padding: 0 8px;
 }
 
-.danger-row {
-  padding: 16px;
-  text-align: center;
-  color: var(--danger);
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
 .restaurant-card {
   display: flex;
   align-items: center;
