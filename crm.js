@@ -1,6 +1,6 @@
-/* Restaurant CRM v7 */
+/* Restaurant CRM v8 */
 
-const APP_VERSION = "v7";
+const APP_VERSION = "v8";
 
 const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
 
@@ -151,12 +151,62 @@ function appleMapsUrl(destination) {
   return `https://maps.apple.com/?daddr=${encodeURIComponent(destination)}`;
 }
 
-function uberUrl(destination) {
-  return `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[formatted_address]=${encodeURIComponent(destination)}`;
+function uberUrl(destination, nickname, coords) {
+  let url = "https://m.uber.com/ul/?action=setPickup&pickup=my_location";
+  url += `&dropoff[nickname]=${encodeURIComponent(nickname || destination)}`;
+  url += `&dropoff[formatted_address]=${encodeURIComponent(destination)}`;
+  if (coords) {
+    url += `&dropoff[latitude]=${coords.lat}&dropoff[longitude]=${coords.lng}`;
+  }
+  return url;
+}
+
+async function geocodeAddress(query) {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (response.ok) {
+      const results = await response.json();
+      if (results.length) {
+        return { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
+      }
+    }
+  } catch (err) {
+    console.warn("Nominatim geocoding failed", err);
+  }
+
+  try {
+    const response = await fetch(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`
+    );
+    if (response.ok) {
+      const data = await response.json();
+      if (data.features && data.features.length) {
+        const [lng, lat] = data.features[0].geometry.coordinates;
+        return { lat, lng };
+      }
+    }
+  } catch (err) {
+    console.warn("Photon geocoding failed", err);
+  }
+
+  return null;
 }
 
 function openNavigation(url) {
   window.location.href = url;
+}
+
+async function openUber(destination, nickname) {
+  let coords = null;
+  try {
+    coords = await geocodeAddress(destination);
+  } catch (err) {
+    console.warn("Geocoding failed", err);
+  }
+  openNavigation(uberUrl(destination, nickname, coords));
 }
 
 function showNavigationPicker(restaurant) {
@@ -176,6 +226,8 @@ function showNavigationPicker(restaurant) {
   `;
 
   const modal = overlay.querySelector(".modal");
+  const uberBtn = overlay.querySelector("#open-uber");
+
   const close = () => {
     overlay.remove();
     document.body.style.overflow = "";
@@ -189,10 +241,20 @@ function showNavigationPicker(restaurant) {
     openNavigation(appleMapsUrl(destination));
     close();
   });
-  overlay.querySelector("#open-uber").addEventListener("click", () => {
-    openNavigation(uberUrl(destination));
-    close();
+
+  uberBtn.addEventListener("click", async () => {
+    uberBtn.disabled = true;
+    uberBtn.textContent = "Finding location…";
+    try {
+      await openUber(destination, restaurant.name);
+      close();
+    } catch (err) {
+      uberBtn.disabled = false;
+      uberBtn.textContent = "Open in Uber";
+      alert("Could not open Uber. Check the address and try again.");
+    }
   });
+
   overlay.querySelector("#nav-cancel").addEventListener("click", close);
 }
 
