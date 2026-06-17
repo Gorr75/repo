@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v13";
+const APP_VERSION = "v14";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
@@ -29,6 +29,11 @@ const I18N = {
     logVisit: "Visited today",
     visitHistory: "Visit history",
     noVisitsYet: "No visits logged yet",
+    addPastVisit: "Add past visit",
+    visitDate: "Date",
+    addVisit: "Add",
+    invalidVisitDate: "Pick a valid date.",
+    futureVisitDate: "Date cannot be in the future.",
     back: "Back",
     details: "Details",
     address: "Address",
@@ -97,6 +102,11 @@ const I18N = {
     logVisit: "Besökt idag",
     visitHistory: "Besökshistorik",
     noVisitsYet: "Inga besök registrerade",
+    addPastVisit: "Lägg till tidigare besök",
+    visitDate: "Datum",
+    addVisit: "Lägg till",
+    invalidVisitDate: "Välj ett giltigt datum.",
+    futureVisitDate: "Datumet får inte ligga i framtiden.",
     back: "Tillbaka",
     details: "Detaljer",
     address: "Adress",
@@ -379,12 +389,54 @@ async function saveRestaurant(data, id) {
 async function logVisit(id) {
   const restaurant = await getRestaurant(id);
   if (!restaurant) return null;
-  const now = Date.now();
-  const visits = [...restaurant.visits, now].slice(-MAX_VISITS);
-  const updated = { ...restaurant, lastVisitedAt: now, visits };
+  return saveVisits(id, [...restaurant.visits, Date.now()]);
+}
+
+function computeLastVisitedAt(visits) {
+  if (!visits.length) return null;
+  return Math.max(...visits);
+}
+
+function normalizeVisits(visits) {
+  return [...visits].sort((a, b) => a - b).slice(-MAX_VISITS);
+}
+
+async function saveVisits(id, visits) {
+  const restaurant = await getRestaurant(id);
+  if (!restaurant) return null;
+  const normalized = normalizeVisits(visits);
+  const updated = { ...restaurant, visits: normalized, lastVisitedAt: computeLastVisitedAt(normalized) };
   const db = await openDatabase();
   await dbRequest(db.transaction("restaurants", "readwrite").objectStore("restaurants").put(updated));
   return updated;
+}
+
+function todayDateString() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseVisitDate(dateStr) {
+  if (!trim(dateStr)) return { error: "empty" };
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return { error: "invalid" };
+  const [, y, m, d] = match.map(Number);
+  const ts = new Date(y, m - 1, d, 12, 0, 0, 0).getTime();
+  if (Number.isNaN(ts)) return { error: "invalid" };
+  const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+  if (endOfDay > Date.now()) return { error: "future" };
+  return { ts };
+}
+
+async function addVisitOnDate(id, dateStr) {
+  const parsed = parseVisitDate(dateStr);
+  if (parsed.error) return { error: parsed.error };
+  const restaurant = await getRestaurant(id);
+  if (!restaurant) return { error: "notfound" };
+  return { restaurant: await saveVisits(id, [...restaurant.visits, parsed.ts]) };
 }
 
 async function deleteRestaurant(id) {
@@ -900,7 +952,7 @@ async function renderDetail(id) {
   }
 
   const staff = await getStaffForRestaurant(id);
-  const recentVisits = [...restaurant.visits].reverse().slice(0, 8);
+  const sortedVisits = [...restaurant.visits].sort((a, b) => b - a);
 
   app.innerHTML = `
     <header class="header header-minimal">
@@ -911,27 +963,6 @@ async function renderDetail(id) {
       <div class="detail-hero">
         ${renderRestaurantThumb(restaurant.image, "detail-photo")}
         <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
-      </div>
-
-      <div class="section">
-        <div class="section-title">${escapeHtml(t("lastVisit"))}</div>
-        <div class="card visit-card">
-          <div class="visit-summary">
-            <span class="visit-when">${escapeHtml(formatRelativeVisit(restaurant.lastVisitedAt))}</span>
-          </div>
-          <button class="btn btn-primary full-width" id="log-visit-btn" type="button">${escapeHtml(t("logVisit"))}</button>
-          ${
-            recentVisits.length
-              ? `
-          <div class="visit-history">
-            <div class="visit-history-title">${escapeHtml(t("visitHistory"))}</div>
-            <ul class="visit-list">
-              ${recentVisits.map((ts) => `<li>${escapeHtml(formatVisitDate(ts))}</li>`).join("")}
-            </ul>
-          </div>`
-              : `<p class="visit-empty">${escapeHtml(t("noVisitsYet"))}</p>`
-          }
-        </div>
       </div>
 
       <div class="section">
@@ -980,6 +1011,34 @@ async function renderDetail(id) {
                <p class="swipe-hint">${escapeHtml(t("swipeDeleteStaff"))}</p>`
         }
       </div>
+
+      <div class="section">
+        <div class="section-title">${escapeHtml(t("lastVisit"))}</div>
+        <div class="card visit-card">
+          <div class="visit-summary">
+            <span class="visit-when">${escapeHtml(formatRelativeVisit(restaurant.lastVisitedAt))}</span>
+          </div>
+          <button class="btn btn-primary full-width" id="log-visit-btn" type="button">${escapeHtml(t("logVisit"))}</button>
+          <div class="visit-add-past">
+            <div class="visit-add-label">${escapeHtml(t("addPastVisit"))}</div>
+            <div class="visit-add-row">
+              <input type="date" id="visit-date-input" max="${todayDateString()}" aria-label="${escapeHtml(t("visitDate"))}" />
+              <button class="btn btn-secondary visit-add-btn" id="add-visit-date-btn" type="button">${escapeHtml(t("addVisit"))}</button>
+            </div>
+          </div>
+          ${
+            sortedVisits.length
+              ? `
+          <div class="visit-history">
+            <div class="visit-history-title">${escapeHtml(t("visitHistory"))}</div>
+            <ul class="visit-list">
+              ${sortedVisits.map((ts) => `<li>${escapeHtml(formatVisitDate(ts))}</li>`).join("")}
+            </ul>
+          </div>`
+              : `<p class="visit-empty">${escapeHtml(t("noVisitsYet"))}</p>`
+          }
+        </div>
+      </div>
     </main>
   `;
 
@@ -989,6 +1048,21 @@ async function renderDetail(id) {
   app.querySelector("#add-staff-btn").addEventListener("click", () => navigate({ view: "add-staff", restaurantId: id }));
   app.querySelector("#log-visit-btn").addEventListener("click", async () => {
     await logVisit(id);
+    await renderDetail(id);
+  });
+
+  app.querySelector("#add-visit-date-btn").addEventListener("click", async () => {
+    const dateInput = app.querySelector("#visit-date-input");
+    const result = await addVisitOnDate(id, dateInput?.value || "");
+    if (result.error === "future") {
+      alert(t("futureVisitDate"));
+      return;
+    }
+    if (result.error === "empty" || result.error === "invalid") {
+      alert(t("invalidVisitDate"));
+      return;
+    }
+    if (result.error) return;
     await renderDetail(id);
   });
 
