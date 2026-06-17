@@ -1,6 +1,6 @@
-/* Restaurant CRM v4 */
+/* Restaurant CRM v5 */
 
-const APP_VERSION = "v4";
+const APP_VERSION = "v5";
 
 const DB_NAME = "restaurant-crm";
 const DB_VERSION = 1;
@@ -64,14 +64,17 @@ async function saveRestaurant(data, id) {
 async function deleteRestaurant(id) {
   const db = await openDatabase();
   const staff = await getStaffForRestaurant(id);
-  const tx = db.transaction(["restaurants", "staff"], "readwrite");
-  for (const member of staff) {
-    tx.objectStore("staff").delete(member.id);
-  }
-  tx.objectStore("restaurants").delete(id);
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
+    const tx = db.transaction(["restaurants", "staff"], "readwrite");
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+    tx.oncomplete = () => resolve();
+    const staffStore = tx.objectStore("staff");
+    const restaurantStore = tx.objectStore("restaurants");
+    for (const member of staff) {
+      staffStore.delete(member.id);
+    }
+    restaurantStore.delete(id);
   });
 }
 
@@ -117,6 +120,7 @@ async function deleteStaff(id) {
 }
 
 let route = { view: "list" };
+let listSearch = "";
 const app = document.getElementById("app");
 
 function navigate(next) {
@@ -163,7 +167,13 @@ async function render() {
 
 async function renderList() {
   const restaurants = await getAllRestaurants();
-  const counts = await Promise.all(restaurants.map((r) => getStaffCount(r.id)));
+  const query = listSearch.toLowerCase();
+  const filtered = restaurants.filter(
+    (r) =>
+      r.name.toLowerCase().includes(query) ||
+      (r.address || "").toLowerCase().includes(query)
+  );
+  const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
 
   app.innerHTML = `
     <header class="header">
@@ -171,28 +181,31 @@ async function renderList() {
       <button class="icon-btn" id="add-btn" type="button" aria-label="Add restaurant">+</button>
     </header>
     <main class="content">
+      <div class="search-box">
+        <input id="search-input" type="search" placeholder="Search restaurants..." value="${escapeHtml(listSearch)}" />
+      </div>
       ${
-        restaurants.length === 0
+        filtered.length === 0
           ? `
         <div class="empty-state">
           <div class="icon">🍽️</div>
-          <h2>No restaurants yet</h2>
-          <p>Tap + to add your first restaurant.</p>
+          <h2>${restaurants.length === 0 ? "No restaurants yet" : "No matches"}</h2>
+          <p>${restaurants.length === 0 ? "Tap + to add your first restaurant." : "Try a different search."}</p>
         </div>`
           : `
         <ul class="list">
-          ${restaurants
+          ${filtered
             .map(
               (r, i) => `
             <li class="list-row">
               <button class="list-item" type="button" data-id="${r.id}">
                 <div class="info">
                   <div class="title">${escapeHtml(r.name)}</div>
-                  <div class="subtitle">${staffLabel(counts[i])}</div>
+                  <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}</div>
                 </div>
                 <span class="chevron">›</span>
               </button>
-              <button class="delete-icon-btn delete-restaurant-list" type="button" data-id="${r.id}" aria-label="Delete restaurant">🗑</button>
+              <button class="delete-list-btn delete-restaurant-list" type="button" data-id="${r.id}">Delete</button>
             </li>`
             )
             .join("")}
@@ -203,16 +216,23 @@ async function renderList() {
 
   app.querySelector("#add-btn").addEventListener("click", () => navigate({ view: "add-restaurant" }));
 
+  const searchInput = app.querySelector("#search-input");
+  searchInput.addEventListener("input", () => {
+    listSearch = searchInput.value;
+    renderList();
+  });
+
   app.querySelectorAll(".list-item").forEach((el) => {
     el.addEventListener("click", () => navigate({ view: "detail", id: el.dataset.id }));
   });
 
   app.querySelectorAll(".delete-restaurant-list").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      const restaurant = restaurants.find((r) => r.id === btn.dataset.id);
+      const restaurant = await getRestaurant(btn.dataset.id);
       if (!restaurant) return;
-      showConfirmDialog(
+      confirmDelete(
         `Delete ${restaurant.name}?`,
         "This removes the restaurant and all its staff.",
         async () => {
@@ -292,7 +312,7 @@ async function renderDetail(id) {
   app.querySelector("#add-staff-btn").addEventListener("click", () => navigate({ view: "add-staff", restaurantId: id }));
 
   app.querySelector("#delete-restaurant-btn").addEventListener("click", () => {
-    showConfirmDialog(
+    confirmDelete(
       `Delete ${restaurant.name}?`,
       "This removes the restaurant and all its staff.",
       async () => {
@@ -311,7 +331,7 @@ async function renderDetail(id) {
   app.querySelectorAll(".delete-staff-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const member = staff.find((s) => s.id === btn.dataset.id);
-      showConfirmDialog(
+      confirmDelete(
         `Delete ${member ? member.name : "staff"}?`,
         "This cannot be undone.",
         async () => {
@@ -465,30 +485,48 @@ async function renderStaffForm(restaurantId, editStaffId) {
   });
 }
 
-function showConfirmDialog(title, message, onConfirm) {
+function confirmDelete(title, message, onConfirm) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true">
       <h2>${escapeHtml(title)}</h2>
       <p class="modal-text">${escapeHtml(message)}</p>
       <div class="modal-actions">
-        <button class="btn btn-secondary" id="modal-cancel" type="button">Cancel</button>
-        <button class="btn btn-delete" id="modal-confirm" type="button">Delete</button>
+        <button class="btn btn-secondary modal-btn" id="modal-cancel" type="button">Cancel</button>
+        <button class="btn btn-delete modal-btn" id="modal-confirm" type="button">Delete</button>
       </div>
     </div>
   `;
 
+  const modal = overlay.querySelector(".modal");
+
+  function close() {
+    overlay.remove();
+    document.body.style.overflow = "";
+  }
+
+  async function runDelete() {
+    try {
+      await onConfirm();
+      close();
+    } catch (err) {
+      alert("Could not delete. Please try again.");
+      console.error(err);
+    }
+  }
+
+  document.body.style.overflow = "hidden";
   document.body.appendChild(overlay);
 
-  overlay.querySelector("#modal-cancel").addEventListener("click", () => overlay.remove());
-  overlay.querySelector("#modal-confirm").addEventListener("click", async () => {
-    await onConfirm();
-    overlay.remove();
-  });
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
+  modal.addEventListener("click", (e) => e.stopPropagation());
+
+  overlay.querySelector("#modal-cancel").addEventListener("click", close);
+  overlay.querySelector("#modal-confirm").addEventListener("click", runDelete);
+}
+
+function showConfirmDialog(title, message, onConfirm) {
+  confirmDelete(title, message, onConfirm);
 }
 
 render();
