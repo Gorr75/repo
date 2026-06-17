@@ -1,7 +1,120 @@
-/* Restaurant CRM v10 */
+/* Magnus Restaurang CRM v11 */
 
-const APP_VERSION = "v10";
+const APP_VERSION = "v11";
+const APP_NAME = "Magnus Restaurang CRM";
 const SWIPE_DELETE_WIDTH = 80;
+
+async function processImageFile(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxSize = 480;
+      let { width, height } = img;
+      if (width > height) {
+        if (width > maxSize) {
+          height = (height * maxSize) / width;
+          width = maxSize;
+        }
+      } else if (height > maxSize) {
+        width = (width * maxSize) / height;
+        height = maxSize;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.src = dataUrl;
+  });
+}
+
+function renderRestaurantThumb(image, sizeClass = "") {
+  if (image) {
+    return `<img class="restaurant-photo ${sizeClass}" src="${image}" alt="" />`;
+  }
+  return `<div class="restaurant-icon ${sizeClass}">🍽</div>`;
+}
+
+function renderStaffAvatar(s) {
+  if (s.image) {
+    return `<img class="contact-photo" src="${s.image}" alt="" />`;
+  }
+  return `<div class="contact-avatar">${escapeHtml(getInitials(s.name))}</div>`;
+}
+
+function photoPickerMarkup({ previewImage, placeholder, placeholderClass = "" }) {
+  return `
+    <div class="photo-picker">
+      <div class="photo-preview ${placeholderClass}" id="photo-preview" data-placeholder="${escapeHtml(placeholder)}">
+        ${
+          previewImage
+            ? `<img src="${previewImage}" alt="" />`
+            : `<span class="photo-placeholder-text">${escapeHtml(placeholder)}</span>`
+        }
+      </div>
+      <div class="photo-actions">
+        <label class="btn btn-secondary photo-choose-btn">
+          Choose Photo
+          <input type="file" id="photo-input" accept="image/*" hidden />
+        </label>
+        <button type="button" class="btn-text danger" id="remove-photo" ${previewImage ? "" : "hidden"}>Remove</button>
+      </div>
+    </div>`;
+}
+
+function bindPhotoPicker({ initialImage }) {
+  let imageData = initialImage || null;
+  let imageRemoved = false;
+  const preview = app.querySelector("#photo-preview");
+  const fileInput = app.querySelector("#photo-input");
+  const removeBtn = app.querySelector("#remove-photo");
+  const placeholder = preview?.dataset.placeholder || "No photo";
+
+  function updatePreview(src) {
+    if (!preview) return;
+    if (src) {
+      preview.innerHTML = `<img src="${src}" alt="" />`;
+      if (removeBtn) removeBtn.hidden = false;
+    } else {
+      preview.innerHTML = `<span class="photo-placeholder-text">${placeholder}</span>`;
+      if (removeBtn) removeBtn.hidden = true;
+    }
+  }
+
+  fileInput?.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    try {
+      imageData = await processImageFile(file);
+      imageRemoved = false;
+      updatePreview(imageData);
+    } catch (err) {
+      alert("Could not load that photo. Try another image.");
+    }
+    fileInput.value = "";
+  });
+
+  removeBtn?.addEventListener("click", () => {
+    imageData = null;
+    imageRemoved = true;
+    updatePreview(null);
+  });
+
+  return {
+    getImagePayload(existingImage = "") {
+      if (imageRemoved) return "";
+      if (imageData !== null) return imageData;
+      return existingImage;
+    },
+  };
+}
 
 const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
 
@@ -59,7 +172,13 @@ async function saveRestaurant(data, id) {
     await dbRequest(db.transaction("restaurants", "readwrite").objectStore("restaurants").put(updated));
     return updated;
   }
-  const restaurant = { id: createId(), name: data.name, address: data.address, createdAt: Date.now() };
+  const restaurant = {
+    id: createId(),
+    name: data.name,
+    address: data.address,
+    image: data.image || "",
+    createdAt: Date.now(),
+  };
   await dbRequest(db.transaction("restaurants", "readwrite").objectStore("restaurants").add(restaurant));
   return restaurant;
 }
@@ -113,6 +232,7 @@ async function saveStaff(restaurantId, data, id) {
     note: data.note || "",
     phone: data.phone || "",
     email: data.email || "",
+    image: data.image || "",
     createdAt: Date.now(),
   };
   await dbRequest(db.transaction("staff", "readwrite").objectStore("staff").add(staff));
@@ -290,7 +410,7 @@ function renderStaffCard(s) {
   const email = s.email ? trim(s.email) : "";
   return `
     <div class="contact-card">
-      <div class="contact-avatar">${escapeHtml(getInitials(s.name))}</div>
+      ${renderStaffAvatar(s)}
       <div class="contact-body">
         <div class="contact-header">
           <span class="contact-name">${escapeHtml(s.name)}</span>
@@ -440,7 +560,7 @@ async function renderList() {
 
   app.innerHTML = `
     <header class="header">
-      <h1>Restaurants ${versionBadge()}</h1>
+      <h1>${APP_NAME} ${versionBadge()}</h1>
       <button class="icon-btn" id="add-btn" type="button" aria-label="Add restaurant">+</button>
     </header>
     <main class="content">
@@ -463,7 +583,7 @@ async function renderList() {
             <li>
               ${wrapSwipeRow(`
                 <div class="restaurant-card" data-id="${r.id}">
-                  <div class="restaurant-icon">🍽</div>
+                  ${renderRestaurantThumb(r.image)}
                   <div class="info">
                     <div class="title">${escapeHtml(r.name)}</div>
                     <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}</div>
@@ -524,11 +644,15 @@ async function renderDetail(id) {
   const staff = await getStaffForRestaurant(id);
 
   app.innerHTML = `
-    <header class="header">
+    <header class="header header-minimal">
       <button class="back-btn" id="back-btn" type="button" aria-label="Back">‹</button>
-      <h1>${escapeHtml(restaurant.name)} ${versionBadge()}</h1>
+      <h1>${versionBadge()}</h1>
     </header>
     <main class="content">
+      <div class="detail-hero">
+        ${renderRestaurantThumb(restaurant.image, "detail-photo")}
+        <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
+      </div>
       <div class="section">
         <div class="section-title">Details</div>
         <div class="card">
@@ -632,6 +756,7 @@ async function renderRestaurantForm(editId) {
   const isEdit = !!editId;
   let name = "";
   let address = "";
+  let image = "";
 
   if (editId) {
     const restaurant = await getRestaurant(editId);
@@ -641,6 +766,7 @@ async function renderRestaurantForm(editId) {
     }
     name = restaurant.name;
     address = restaurant.address;
+    image = restaurant.image || "";
   }
 
   app.innerHTML = `
@@ -650,6 +776,14 @@ async function renderRestaurantForm(editId) {
     </header>
     <main class="content">
       <form class="form" id="restaurant-form">
+        <div class="field">
+          <label>Photo</label>
+          ${photoPickerMarkup({
+            previewImage: image,
+            placeholder: "Add restaurant photo",
+            placeholderClass: "restaurant-photo-preview",
+          })}
+        </div>
         <div class="field">
           <label for="name">Name</label>
           <input id="name" type="text" value="${escapeHtml(name)}" placeholder="Restaurant name" required />
@@ -669,6 +803,7 @@ async function renderRestaurantForm(editId) {
   const nameInput = app.querySelector("#name");
   const addressInput = app.querySelector("#address");
   const saveBtn = app.querySelector("#save-btn");
+  const photoPicker = bindPhotoPicker({ initialImage: image });
 
   function updateSave() {
     saveBtn.disabled = trim(nameInput.value) === "";
@@ -685,7 +820,11 @@ async function renderRestaurantForm(editId) {
   app.querySelector("#restaurant-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const saved = await saveRestaurant(
-      { name: trim(nameInput.value), address: trim(addressInput.value) },
+      {
+        name: trim(nameInput.value),
+        address: trim(addressInput.value),
+        image: photoPicker.getImagePayload(image),
+      },
       editId
     );
     navigate(isEdit ? { view: "detail", id: saved.id } : { view: "list" });
@@ -699,6 +838,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
   let note = "";
   let phone = "";
   let email = "";
+  let image = "";
 
   if (editStaffId) {
     const members = await getStaffForRestaurant(restaurantId);
@@ -712,6 +852,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
     note = member.note || "";
     phone = member.phone || "";
     email = member.email || "";
+    image = member.image || "";
   }
 
   app.innerHTML = `
@@ -721,6 +862,14 @@ async function renderStaffForm(restaurantId, editStaffId) {
     </header>
     <main class="content">
       <form class="form" id="staff-form">
+        <div class="field">
+          <label>Photo</label>
+          ${photoPickerMarkup({
+            previewImage: image,
+            placeholder: "Add staff photo",
+            placeholderClass: "staff-photo-preview",
+          })}
+        </div>
         <div class="form-section">
           <div class="field">
             <label for="name">Name</label>
@@ -763,6 +912,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
   const phoneInput = app.querySelector("#phone");
   const emailInput = app.querySelector("#email");
   const saveBtn = app.querySelector("#save-btn");
+  const photoPicker = bindPhotoPicker({ initialImage: image });
 
   function updatePresetHighlight() {
     const current = trim(roleInput.value);
@@ -817,6 +967,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
         note: trim(noteInput.value),
         phone: trim(phoneInput.value),
         email: trim(emailInput.value),
+        image: photoPicker.getImagePayload(image),
       },
       editStaffId
     );

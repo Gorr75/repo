@@ -1,12 +1,12 @@
 {
-  "name": "Restaurant CRM v10",
-  "short_name": "Restaurants",
+  "name": "Magnus Restaurang CRM",
+  "short_name": "Magnus CRM",
   "description": "Remember staff and managers at your favorite restaurants",
-  "start_url": "./?v=10",
+  "start_url": "./?v=11",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#1a1a2e",
-  "theme_color": "#1a1a2e",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "icon.svg",
