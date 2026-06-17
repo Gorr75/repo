@@ -1,6 +1,6 @@
-/* Restaurant CRM v8 */
+/* Restaurant CRM v9 */
 
-const APP_VERSION = "v8";
+const APP_VERSION = "v9";
 
 const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
 
@@ -110,6 +110,8 @@ async function saveStaff(restaurantId, data, id) {
     name: data.name,
     role: data.role,
     note: data.note || "",
+    phone: data.phone || "",
+    email: data.email || "",
     createdAt: Date.now(),
   };
   await dbRequest(db.transaction("staff", "readwrite").objectStore("staff").add(staff));
@@ -262,6 +264,48 @@ function versionBadge() {
   return `<span class="version-badge">${APP_VERSION}</span>`;
 }
 
+function getInitials(name) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getRoleBadgeClass(role) {
+  const r = role.toLowerCase();
+  if (r === "manager" || r === "gm") return "badge-manager";
+  if (r === "server" || r === "host") return "badge-server";
+  if (r === "chef" || r === "sommelier") return "badge-chef";
+  if (r === "bartender") return "badge-bartender";
+  return "badge-default";
+}
+
+function formatPhoneLink(phone) {
+  return phone.replace(/[^\d+]/g, "");
+}
+
+function renderStaffCard(s) {
+  const phone = s.phone ? trim(s.phone) : "";
+  const email = s.email ? trim(s.email) : "";
+  return `
+    <div class="contact-card">
+      <div class="contact-avatar">${escapeHtml(getInitials(s.name))}</div>
+      <div class="contact-body">
+        <div class="contact-header">
+          <span class="contact-name">${escapeHtml(s.name)}</span>
+          <span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(s.role)}</span>
+        </div>
+        ${phone ? `<a class="contact-link" href="tel:${formatPhoneLink(phone)}">${escapeHtml(phone)}</a>` : ""}
+        ${email ? `<a class="contact-link" href="mailto:${encodeURIComponent(email)}">${escapeHtml(email)}</a>` : ""}
+        ${s.note ? `<p class="contact-note">${escapeHtml(s.note)}</p>` : ""}
+        <div class="contact-actions">
+          <button class="btn-text edit-staff-btn" type="button" data-id="${s.id}">Edit</button>
+          <button class="btn-text danger delete-staff-btn" type="button" data-id="${s.id}">Delete</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 async function render() {
   switch (route.view) {
     case "list":
@@ -318,7 +362,8 @@ async function renderList() {
             .map(
               (r, i) => `
             <li class="list-row">
-              <button class="list-item" type="button" data-id="${r.id}">
+              <button class="restaurant-card" type="button" data-id="${r.id}">
+                <div class="restaurant-icon">🍽</div>
                 <div class="info">
                   <div class="title">${escapeHtml(r.name)}</div>
                   <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}</div>
@@ -342,7 +387,7 @@ async function renderList() {
     renderList();
   });
 
-  app.querySelectorAll(".list-item").forEach((el) => {
+  app.querySelectorAll(".restaurant-card").forEach((el) => {
     el.addEventListener("click", () => navigate({ view: "detail", id: el.dataset.id }));
   });
 
@@ -407,28 +452,11 @@ async function renderDetail(id) {
       <div class="section">
         <div class="section-title">Staff</div>
         <button class="btn btn-primary full-width" id="add-staff-btn" type="button">+ Add Staff Member</button>
-        <div class="card staff-card ${staff.length === 0 ? "empty-card" : ""}">
-          ${
-            staff.length === 0
-              ? `<div class="card-row"><span style="color: var(--text-muted)">No staff yet — tap the button above</span></div>`
-              : staff
-                  .map(
-                    (s) => `
-            <div class="staff-item">
-              <div class="info">
-                <div class="name">${escapeHtml(s.name)}</div>
-                <div class="role">${escapeHtml(s.role)}</div>
-                ${s.note ? `<div class="note">${escapeHtml(s.note)}</div>` : ""}
-              </div>
-              <div class="actions column">
-                <button class="btn-small btn-edit edit-staff-btn" type="button" data-id="${s.id}">Edit</button>
-                <button class="btn-small btn-delete delete-staff-btn" type="button" data-id="${s.id}">Delete</button>
-              </div>
-            </div>`
-                  )
-                  .join("")
-          }
-        </div>
+        ${
+          staff.length === 0
+            ? `<div class="empty-card">No staff yet — tap the button above</div>`
+            : `<div class="staff-list">${staff.map((s) => renderStaffCard(s)).join("")}</div>`
+        }
       </div>
 
       <button class="btn btn-danger btn-danger-compact" id="delete-restaurant-btn" type="button">Delete Restaurant</button>
@@ -545,6 +573,8 @@ async function renderStaffForm(restaurantId, editStaffId) {
   let name = "";
   let role = "";
   let note = "";
+  let phone = "";
+  let email = "";
 
   if (editStaffId) {
     const members = await getStaffForRestaurant(restaurantId);
@@ -556,6 +586,8 @@ async function renderStaffForm(restaurantId, editStaffId) {
     name = member.name;
     role = member.role;
     note = member.note || "";
+    phone = member.phone || "";
+    email = member.email || "";
   }
 
   app.innerHTML = `
@@ -565,9 +597,19 @@ async function renderStaffForm(restaurantId, editStaffId) {
     </header>
     <main class="content">
       <form class="form" id="staff-form">
-        <div class="field">
-          <label for="name">Name</label>
-          <input id="name" type="text" value="${escapeHtml(name)}" placeholder="Staff name" required />
+        <div class="form-section">
+          <div class="field">
+            <label for="name">Name</label>
+            <input id="name" type="text" value="${escapeHtml(name)}" placeholder="Full name" required />
+          </div>
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input id="phone" type="tel" value="${escapeHtml(phone)}" placeholder="+46 70 123 45 67" />
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="email" value="${escapeHtml(email)}" placeholder="name@example.com" />
+          </div>
         </div>
         <div class="field">
           <label for="role">Role</label>
@@ -594,6 +636,8 @@ async function renderStaffForm(restaurantId, editStaffId) {
   const nameInput = app.querySelector("#name");
   const roleInput = app.querySelector("#role");
   const noteInput = app.querySelector("#note");
+  const phoneInput = app.querySelector("#phone");
+  const emailInput = app.querySelector("#email");
   const saveBtn = app.querySelector("#save-btn");
 
   function updatePresetHighlight() {
@@ -647,6 +691,8 @@ async function renderStaffForm(restaurantId, editStaffId) {
         name: trim(nameInput.value),
         role: trim(roleInput.value),
         note: trim(noteInput.value),
+        phone: trim(phoneInput.value),
+        email: trim(emailInput.value),
       },
       editStaffId
     );
