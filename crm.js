@@ -1,6 +1,8 @@
-/* Restaurant CRM v5 */
+/* Restaurant CRM v6 */
 
-const APP_VERSION = "v5";
+const APP_VERSION = "v6";
+
+const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
 
 const DB_NAME = "restaurant-crm";
 const DB_VERSION = 1;
@@ -138,6 +140,62 @@ function trim(value) {
   return value.trim();
 }
 
+function destinationQuery(restaurant) {
+  if (restaurant.address) {
+    return `${restaurant.name}, ${restaurant.address}`;
+  }
+  return restaurant.name;
+}
+
+function appleMapsUrl(destination) {
+  return `https://maps.apple.com/?daddr=${encodeURIComponent(destination)}`;
+}
+
+function uberUrl(destination) {
+  return `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[formatted_address]=${encodeURIComponent(destination)}`;
+}
+
+function openNavigation(url) {
+  window.location.href = url;
+}
+
+function showNavigationPicker(restaurant) {
+  const destination = destinationQuery(restaurant);
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>Get directions</h2>
+      <p class="modal-text">${escapeHtml(destination)}</p>
+      <div class="nav-actions">
+        <button class="btn btn-primary full-width nav-btn" id="open-maps" type="button">Open in Apple Maps</button>
+        <button class="btn btn-secondary full-width nav-btn uber-btn" id="open-uber" type="button">Open in Uber</button>
+        <button class="btn btn-secondary full-width nav-btn" id="nav-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  const modal = overlay.querySelector(".modal");
+  const close = () => {
+    overlay.remove();
+    document.body.style.overflow = "";
+  };
+
+  document.body.style.overflow = "hidden";
+  document.body.appendChild(overlay);
+  modal.addEventListener("click", (e) => e.stopPropagation());
+
+  overlay.querySelector("#open-maps").addEventListener("click", () => {
+    openNavigation(appleMapsUrl(destination));
+    close();
+  });
+  overlay.querySelector("#open-uber").addEventListener("click", () => {
+    openNavigation(uberUrl(destination));
+    close();
+  });
+  overlay.querySelector("#nav-cancel").addEventListener("click", close);
+}
+
 function versionBadge() {
   return `<span class="version-badge">${APP_VERSION}</span>`;
 }
@@ -266,12 +324,20 @@ async function renderDetail(id) {
       <div class="section">
         <div class="section-title">Details</div>
         <div class="card">
+          ${
+            restaurant.address
+              ? `
+          <button class="address-btn" id="address-nav" type="button">
+            <span class="label">Address</span>
+            <span class="address-value">${escapeHtml(restaurant.address)}</span>
+            <span class="address-hint">Tap for Maps or Uber →</span>
+          </button>`
+              : `
           <div class="card-row">
             <span class="label">Address</span>
-            <span class="value" style="${restaurant.address ? "" : "color: var(--text-muted)"}">
-              ${restaurant.address ? escapeHtml(restaurant.address) : "No address"}
-            </span>
-          </div>
+            <span class="value" style="color: var(--text-muted)">No address</span>
+          </div>`
+          }
         </div>
         <button class="btn btn-secondary full-width" id="edit-restaurant-btn" type="button">Edit Restaurant</button>
       </div>
@@ -310,6 +376,11 @@ async function renderDetail(id) {
   app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
   app.querySelector("#edit-restaurant-btn").addEventListener("click", () => navigate({ view: "edit-restaurant", id }));
   app.querySelector("#add-staff-btn").addEventListener("click", () => navigate({ view: "add-staff", restaurantId: id }));
+
+  const addressNav = app.querySelector("#address-nav");
+  if (addressNav) {
+    addressNav.addEventListener("click", () => showNavigationPicker(restaurant));
+  }
 
   app.querySelector("#delete-restaurant-btn").addEventListener("click", () => {
     confirmDelete(
@@ -438,7 +509,13 @@ async function renderStaffForm(restaurantId, editStaffId) {
         </div>
         <div class="field">
           <label for="role">Role</label>
-          <input id="role" type="text" value="${escapeHtml(role)}" placeholder="e.g. Manager, Server" required />
+          <div class="role-presets" id="role-presets">
+            ${ROLE_PRESETS.map(
+              (preset) =>
+                `<button type="button" class="preset-chip" data-role="${preset}">${preset}</button>`
+            ).join("")}
+          </div>
+          <input id="role" type="text" value="${escapeHtml(role)}" placeholder="Or type a custom role" required />
         </div>
         <div class="field">
           <label for="note">Note</label>
@@ -457,13 +534,43 @@ async function renderStaffForm(restaurantId, editStaffId) {
   const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
 
+  function updatePresetHighlight() {
+    const current = trim(roleInput.value);
+    app.querySelectorAll(".preset-chip").forEach((chip) => {
+      const preset = chip.dataset.role;
+      const isMatch =
+        preset === "Other"
+          ? current !== "" && !ROLE_PRESETS.slice(0, -1).includes(current)
+          : current === preset;
+      chip.classList.toggle("selected", isMatch);
+    });
+  }
+
   function updateSave() {
     saveBtn.disabled = trim(nameInput.value) === "" || trim(roleInput.value) === "";
   }
 
   nameInput.addEventListener("input", updateSave);
-  roleInput.addEventListener("input", updateSave);
+  roleInput.addEventListener("input", () => {
+    updateSave();
+    updatePresetHighlight();
+  });
   updateSave();
+  updatePresetHighlight();
+
+  app.querySelectorAll(".preset-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const preset = chip.dataset.role;
+      if (preset === "Other") {
+        roleInput.value = "";
+        roleInput.focus();
+      } else {
+        roleInput.value = preset;
+      }
+      updateSave();
+      updatePresetHighlight();
+    });
+  });
 
   const cancel = () => navigate({ view: "detail", id: restaurantId });
 
