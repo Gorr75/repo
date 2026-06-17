@@ -10,42 +10,30 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Restaurants" />
     <meta name="theme-color" content="#1a1a2e" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=3" />
-    <title>Restaurant CRM</title>
+    <link rel="stylesheet" href="crm.css" />
+    <title>Restaurant CRM v4</title>
   </head>
   <body>
     <div id="app"></div>
-    <script src="app.js?v=3"></script>
+    <script src="crm.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js?v=3").then(function (registration) {
-          registration.update();
-
-          function refreshIfWaiting(worker) {
-            if (!worker) return;
-            worker.postMessage({ type: "SKIP_WAITING" });
-            worker.addEventListener("statechange", function () {
-              if (worker.state === "activated") {
-                window.location.reload();
-              }
-            });
-          }
-
-          if (registration.waiting) {
-            refreshIfWaiting(registration.waiting);
-          }
-
-          registration.addEventListener("updatefound", function () {
-            var newWorker = registration.installing;
-            if (!newWorker) return;
-            newWorker.addEventListener("statechange", function () {
-              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                refreshIfWaiting(newWorker);
-              }
-            });
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (reg) {
+            reg.unregister();
+          });
+        });
+      }
+      if ("caches" in window) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (key) {
+            caches.delete(key);
           });
         });
       }
