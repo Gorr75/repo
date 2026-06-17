@@ -114,6 +114,71 @@ textarea {
   letter-spacing: 0.04em;
 }
 
+.header-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.header-minimal h1 {
+  justify-content: flex-end;
+  flex: 1;
+}
+
+.lang-select {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 4px;
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: none;
+  letter-spacing: 0.04em;
+  min-width: 0;
+  width: auto;
+  max-width: 52px;
+}
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sort-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sort-options {
+  display: flex;
+  gap: 8px;
+}
+
+.sort-chip {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  color: var(--text-secondary);
+}
+
+.sort-chip.selected {
+  background: var(--accent);
+  color: white;
+}
+
+.sort-chip:active {
+  opacity: 0.85;
+}
+
 .header .back-btn {
   font-size: 1.75rem;
   line-height: 1;
@@ -368,6 +433,82 @@ textarea {
   font-size: 0.9rem;
 }
 
+.card-row .value.muted,
+.muted {
+  color: var(--text-tertiary);
+}
+
+.note-block {
+  padding: 14px 16px;
+  border-top: 0.5px solid var(--border);
+}
+
+.note-block .label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.restaurant-note {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.visit-card {
+  padding: 14px 16px;
+}
+
+.visit-summary {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.visit-when {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.visit-history {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 0.5px solid var(--border);
+}
+
+.visit-history-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.visit-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visit-list li {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.visit-empty {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
 .staff-list {
   display: flex;
   flex-direction: column;
@@ -422,6 +563,24 @@ textarea {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 4px;
+}
+
+.call-btn {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  text-decoration: none;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.call-btn:active {
+  opacity: 0.75;
 }
 
 .contact-name {
@@ -697,10 +856,6 @@ textarea {
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.03em;
-}
-
-.header-minimal h1 {
-  justify-content: flex-end;
 }
 
 .photo-picker {

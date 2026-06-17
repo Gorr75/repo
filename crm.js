@@ -1,8 +1,174 @@
-/* Magnus Restaurang CRM v11 */
+/* Restaurant CRM */
 
-const APP_VERSION = "v12";
-const APP_NAME = "Magnus Restaurang CRM";
+const APP_VERSION = "v13";
+const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
+const LANG_KEY = "restaurant-crm-lang";
+const SORT_KEY = "restaurant-crm-sort";
+const MAX_VISITS = 50;
+
+const I18N = {
+  en: {
+    addRestaurant: "Add restaurant",
+    searchPlaceholder: "Search restaurants…",
+    noRestaurants: "No restaurants yet",
+    noMatches: "No matches",
+    tapToAdd: "Tap + to add your first restaurant.",
+    trySearch: "Try a different search.",
+    swipeDeleteRestaurant: "Swipe left on a restaurant to delete",
+    staffOne: "1 staff member",
+    staffMany: "{n} staff members",
+    sortName: "A–Z",
+    sortRecent: "Recent",
+    sortLabel: "Sort",
+    neverVisited: "Never visited",
+    visitedToday: "Today",
+    visitedYesterday: "Yesterday",
+    visitedDaysAgo: "{n} days ago",
+    lastVisit: "Last visit",
+    logVisit: "Visited today",
+    visitHistory: "Visit history",
+    noVisitsYet: "No visits logged yet",
+    back: "Back",
+    details: "Details",
+    address: "Address",
+    noAddress: "No address",
+    addressHint: "Tap for Maps or Uber →",
+    note: "Note",
+    noNote: "No note",
+    editRestaurant: "Edit Restaurant",
+    newRestaurant: "New Restaurant",
+    staff: "Staff",
+    addStaff: "+ Add Staff Member",
+    noStaff: "No staff yet — tap the button above",
+    swipeDeleteStaff: "Swipe left on staff to delete",
+    editStaff: "Edit Staff",
+    newStaff: "New Staff",
+    edit: "Edit",
+    delete: "Delete",
+    cancel: "Cancel",
+    save: "Save",
+    photo: "Photo",
+    addRestaurantPhoto: "Add restaurant photo",
+    addStaffPhoto: "Add staff photo",
+    choosePhoto: "Choose Photo",
+    remove: "Remove",
+    name: "Name",
+    restaurantName: "Restaurant name",
+    restaurantNotePlaceholder: "Table preferences, opening hours, etc.",
+    streetCity: "Street, city",
+    fullName: "Full name",
+    phone: "Phone",
+    email: "Email",
+    role: "Role",
+    customRole: "Or type a custom role",
+    shortNote: "Short note",
+    getDirections: "Get directions",
+    openMaps: "Open in Apple Maps",
+    openUber: "Open in Uber",
+    findingLocation: "Finding location…",
+    deleteRestaurantTitle: "Delete {name}?",
+    deleteRestaurantMsg: "This removes the restaurant and all its staff.",
+    deleteStaffTitle: "Delete {name}?",
+    deleteStaffMsg: "This cannot be undone.",
+    couldNotDelete: "Could not delete. Please try again.",
+    couldNotLoadPhoto: "Could not load that photo. Try another image.",
+    couldNotOpenUber: "Could not open Uber. Check the address and try again.",
+    call: "Call",
+  },
+  sv: {
+    addRestaurant: "Lägg till restaurang",
+    searchPlaceholder: "Sök restauranger…",
+    noRestaurants: "Inga restauranger ännu",
+    noMatches: "Inga träffar",
+    tapToAdd: "Tryck + för att lägga till din första restaurang.",
+    trySearch: "Prova en annan sökning.",
+    swipeDeleteRestaurant: "Svep vänster på en restaurang för att radera",
+    staffOne: "1 personal",
+    staffMany: "{n} personal",
+    sortName: "A–Ö",
+    sortRecent: "Senaste",
+    sortLabel: "Sortera",
+    neverVisited: "Aldrig besökt",
+    visitedToday: "Idag",
+    visitedYesterday: "Igår",
+    visitedDaysAgo: "För {n} dagar sedan",
+    lastVisit: "Senaste besök",
+    logVisit: "Besökt idag",
+    visitHistory: "Besökshistorik",
+    noVisitsYet: "Inga besök registrerade",
+    back: "Tillbaka",
+    details: "Detaljer",
+    address: "Adress",
+    noAddress: "Ingen adress",
+    addressHint: "Tryck för Kartor eller Uber →",
+    note: "Anteckning",
+    noNote: "Ingen anteckning",
+    editRestaurant: "Redigera restaurang",
+    newRestaurant: "Ny restaurang",
+    staff: "Personal",
+    addStaff: "+ Lägg till personal",
+    noStaff: "Ingen personal ännu — tryck på knappen ovan",
+    swipeDeleteStaff: "Svep vänster på personal för att radera",
+    editStaff: "Redigera personal",
+    newStaff: "Ny personal",
+    edit: "Redigera",
+    delete: "Radera",
+    cancel: "Avbryt",
+    save: "Spara",
+    photo: "Foto",
+    addRestaurantPhoto: "Lägg till restaurangfoto",
+    addStaffPhoto: "Lägg till personalfoto",
+    choosePhoto: "Välj foto",
+    remove: "Ta bort",
+    name: "Namn",
+    restaurantName: "Restaurangnamn",
+    restaurantNotePlaceholder: "Bordsönskemål, öppettider, m.m.",
+    streetCity: "Gata, stad",
+    fullName: "Fullständigt namn",
+    phone: "Telefon",
+    email: "E-post",
+    role: "Roll",
+    customRole: "Eller skriv en egen roll",
+    shortNote: "Kort anteckning",
+    getDirections: "Hitta vägen",
+    openMaps: "Öppna i Apple Maps",
+    openUber: "Öppna i Uber",
+    findingLocation: "Hittar plats…",
+    deleteRestaurantTitle: "Radera {name}?",
+    deleteRestaurantMsg: "Detta tar bort restaurangen och all personal.",
+    deleteStaffTitle: "Radera {name}?",
+    deleteStaffMsg: "Detta kan inte ångras.",
+    couldNotDelete: "Kunde inte radera. Försök igen.",
+    couldNotLoadPhoto: "Kunde inte ladda fotot. Prova en annan bild.",
+    couldNotOpenUber: "Kunde inte öppna Uber. Kontrollera adressen och försök igen.",
+    call: "Ring",
+  },
+};
+
+let lang = localStorage.getItem(LANG_KEY) || "en";
+let listSort = localStorage.getItem(SORT_KEY) || "name";
+
+function t(key, params = {}) {
+  let text = I18N[lang]?.[key] ?? I18N.en[key] ?? key;
+  for (const [k, v] of Object.entries(params)) {
+    text = text.replace(`{${k}}`, v);
+  }
+  return text;
+}
+
+function setLang(next) {
+  lang = next;
+  localStorage.setItem(LANG_KEY, next);
+  document.documentElement.lang = next === "sv" ? "sv" : "en";
+  render();
+}
+
+function setListSort(next) {
+  listSort = next;
+  localStorage.setItem(SORT_KEY, next);
+  renderList();
+}
 
 async function processImageFile(file) {
   const dataUrl = await new Promise((resolve, reject) => {
@@ -61,10 +227,10 @@ function photoPickerMarkup({ previewImage, placeholder, placeholderClass = "" })
       </div>
       <div class="photo-actions">
         <label class="btn btn-secondary photo-choose-btn">
-          Choose Photo
+          ${escapeHtml(t("choosePhoto"))}
           <input type="file" id="photo-input" accept="image/*" hidden />
         </label>
-        <button type="button" class="btn-text danger" id="remove-photo" ${previewImage ? "" : "hidden"}>Remove</button>
+        <button type="button" class="btn-text danger" id="remove-photo" ${previewImage ? "" : "hidden"}>${escapeHtml(t("remove"))}</button>
       </div>
     </div>`;
 }
@@ -75,7 +241,7 @@ function bindPhotoPicker({ initialImage }) {
   const preview = app.querySelector("#photo-preview");
   const fileInput = app.querySelector("#photo-input");
   const removeBtn = app.querySelector("#remove-photo");
-  const placeholder = preview?.dataset.placeholder || "No photo";
+  const placeholder = preview?.dataset.placeholder || "";
 
   function updatePreview(src) {
     if (!preview) return;
@@ -96,7 +262,7 @@ function bindPhotoPicker({ initialImage }) {
       imageRemoved = false;
       updatePreview(imageData);
     } catch (err) {
-      alert("Could not load that photo. Try another image.");
+      alert(t("couldNotLoadPhoto"));
     }
     fileInput.value = "";
   });
@@ -152,15 +318,39 @@ function createId() {
   return crypto.randomUUID();
 }
 
+function normalizeRestaurant(r) {
+  return {
+    ...r,
+    note: r.note || "",
+    image: r.image || "",
+    lastVisitedAt: r.lastVisitedAt || null,
+    visits: Array.isArray(r.visits) ? r.visits : [],
+  };
+}
+
 async function getAllRestaurants() {
   const db = await openDatabase();
   const restaurants = await dbRequest(db.transaction("restaurants").objectStore("restaurants").getAll());
-  return restaurants.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return restaurants.map(normalizeRestaurant);
+}
+
+function sortRestaurants(restaurants, sort) {
+  const copy = [...restaurants];
+  if (sort === "recent") {
+    return copy.sort((a, b) => {
+      const aTime = a.lastVisitedAt || 0;
+      const bTime = b.lastVisitedAt || 0;
+      if (bTime !== aTime) return bTime - aTime;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+  }
+  return copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
 async function getRestaurant(id) {
   const db = await openDatabase();
-  return dbRequest(db.transaction("restaurants").objectStore("restaurants").get(id));
+  const restaurant = await dbRequest(db.transaction("restaurants").objectStore("restaurants").get(id));
+  return restaurant ? normalizeRestaurant(restaurant) : null;
 }
 
 async function saveRestaurant(data, id) {
@@ -172,15 +362,29 @@ async function saveRestaurant(data, id) {
     await dbRequest(db.transaction("restaurants", "readwrite").objectStore("restaurants").put(updated));
     return updated;
   }
-  const restaurant = {
+  const restaurant = normalizeRestaurant({
     id: createId(),
     name: data.name,
     address: data.address,
+    note: data.note || "",
     image: data.image || "",
     createdAt: Date.now(),
-  };
+    lastVisitedAt: null,
+    visits: [],
+  });
   await dbRequest(db.transaction("restaurants", "readwrite").objectStore("restaurants").add(restaurant));
   return restaurant;
+}
+
+async function logVisit(id) {
+  const restaurant = await getRestaurant(id);
+  if (!restaurant) return null;
+  const now = Date.now();
+  const visits = [...restaurant.visits, now].slice(-MAX_VISITS);
+  const updated = { ...restaurant, lastVisitedAt: now, visits };
+  const db = await openDatabase();
+  await dbRequest(db.transaction("restaurants", "readwrite").objectStore("restaurants").put(updated));
+  return updated;
 }
 
 async function deleteRestaurant(id) {
@@ -338,12 +542,12 @@ function showNavigationPicker(restaurant) {
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
-      <h2>Get directions</h2>
+      <h2>${escapeHtml(t("getDirections"))}</h2>
       <p class="modal-text">${escapeHtml(destination)}</p>
       <div class="nav-actions">
-        <button class="btn btn-primary full-width nav-btn" id="open-maps" type="button">Open in Apple Maps</button>
-        <button class="btn btn-secondary full-width nav-btn uber-btn" id="open-uber" type="button">Open in Uber</button>
-        <button class="btn btn-secondary full-width nav-btn" id="nav-cancel" type="button">Cancel</button>
+        <button class="btn btn-primary full-width nav-btn" id="open-maps" type="button">${escapeHtml(t("openMaps"))}</button>
+        <button class="btn btn-secondary full-width nav-btn uber-btn" id="open-uber" type="button">${escapeHtml(t("openUber"))}</button>
+        <button class="btn btn-secondary full-width nav-btn" id="nav-cancel" type="button">${escapeHtml(t("cancel"))}</button>
       </div>
     </div>
   `;
@@ -367,14 +571,14 @@ function showNavigationPicker(restaurant) {
 
   uberBtn.addEventListener("click", async () => {
     uberBtn.disabled = true;
-    uberBtn.textContent = "Finding location…";
+    uberBtn.textContent = t("findingLocation");
     try {
       await openUber(destination, restaurant.name);
       close();
     } catch (err) {
       uberBtn.disabled = false;
-      uberBtn.textContent = "Open in Uber";
-      alert("Could not open Uber. Check the address and try again.");
+      uberBtn.textContent = t("openUber");
+      alert(t("couldNotOpenUber"));
     }
   });
 
@@ -383,6 +587,24 @@ function showNavigationPicker(restaurant) {
 
 function versionBadge() {
   return `<span class="version-badge">${APP_VERSION}</span>`;
+}
+
+function langSelectMarkup() {
+  return `
+    <select class="lang-select" id="lang-select" aria-label="Language">
+      <option value="en" ${lang === "en" ? "selected" : ""}>ENG</option>
+      <option value="sv" ${lang === "sv" ? "selected" : ""}>SV</option>
+    </select>`;
+}
+
+function headerMeta() {
+  return `<span class="header-meta">${versionBadge()}${langSelectMarkup()}</span>`;
+}
+
+function bindLangSelect() {
+  const select = app.querySelector("#lang-select");
+  if (!select) return;
+  select.addEventListener("change", () => setLang(select.value));
 }
 
 function getInitials(name) {
@@ -405,6 +627,28 @@ function formatPhoneLink(phone) {
   return phone.replace(/[^\d+]/g, "");
 }
 
+function formatRelativeVisit(ts) {
+  if (!ts) return t("neverVisited");
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days <= 0) return t("visitedToday");
+  if (days === 1) return t("visitedYesterday");
+  return t("visitedDaysAgo", { n: days });
+}
+
+function formatVisitDate(ts) {
+  const locale = lang === "sv" ? "sv-SE" : "en-GB";
+  return new Date(ts).toLocaleDateString(locale, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function staffLabel(count) {
+  return count === 1 ? t("staffOne") : t("staffMany", { n: count });
+}
+
 function renderStaffCard(s) {
   const phone = s.phone ? trim(s.phone) : "";
   const email = s.email ? trim(s.email) : "";
@@ -415,12 +659,17 @@ function renderStaffCard(s) {
         <div class="contact-header">
           <span class="contact-name">${escapeHtml(s.name)}</span>
           <span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(s.role)}</span>
+          ${
+            phone
+              ? `<a class="call-btn" href="tel:${formatPhoneLink(phone)}" aria-label="${escapeHtml(t("call"))}" title="${escapeHtml(t("call"))}">📞</a>`
+              : ""
+          }
         </div>
         ${phone ? `<a class="contact-link" href="tel:${formatPhoneLink(phone)}">${escapeHtml(phone)}</a>` : ""}
         ${email ? `<a class="contact-link" href="mailto:${encodeURIComponent(email)}">${escapeHtml(email)}</a>` : ""}
         ${s.note ? `<p class="contact-note">${escapeHtml(s.note)}</p>` : ""}
         <div class="contact-actions">
-          <button class="btn-text edit-staff-btn" type="button" data-id="${s.id}">Edit</button>
+          <button class="btn-text edit-staff-btn" type="button" data-id="${s.id}">${escapeHtml(t("edit"))}</button>
         </div>
       </div>
     </div>`;
@@ -430,7 +679,7 @@ function wrapSwipeRow(contentHtml) {
   return `
     <div class="swipe-row">
       <div class="swipe-behind">
-        <button class="swipe-delete-btn" type="button">Delete</button>
+        <button class="swipe-delete-btn" type="button">${escapeHtml(t("delete"))}</button>
       </div>
       <div class="swipe-front">${contentHtml}</div>
     </div>`;
@@ -512,7 +761,7 @@ function bindSwipeRow(row, { onTap, onDelete }) {
       closeAllSwipes();
       return;
     }
-    if (e.target.closest("a, .edit-staff-btn, .contact-link")) return;
+    if (e.target.closest("a, .edit-staff-btn, .contact-link, .call-btn")) return;
     if (onTap) onTap(e);
   });
 }
@@ -549,31 +798,39 @@ async function render() {
 }
 
 async function renderList() {
-  const restaurants = await getAllRestaurants();
+  const restaurants = sortRestaurants(await getAllRestaurants(), listSort);
   const query = listSearch.toLowerCase();
   const filtered = restaurants.filter(
     (r) =>
       r.name.toLowerCase().includes(query) ||
-      (r.address || "").toLowerCase().includes(query)
+      (r.address || "").toLowerCase().includes(query) ||
+      (r.note || "").toLowerCase().includes(query)
   );
   const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
 
   app.innerHTML = `
     <header class="header">
-      <h1>${APP_NAME} ${versionBadge()}</h1>
-      <button class="icon-btn" id="add-btn" type="button" aria-label="Add restaurant">+</button>
+      <h1>${APP_NAME} ${headerMeta()}</h1>
+      <button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>
     </header>
     <main class="content">
       <div class="search-box">
-        <input id="search-input" type="search" placeholder="Search restaurants..." value="${escapeHtml(listSearch)}" />
+        <input id="search-input" type="search" placeholder="${escapeHtml(t("searchPlaceholder"))}" value="${escapeHtml(listSearch)}" />
+      </div>
+      <div class="sort-row">
+        <span class="sort-label">${escapeHtml(t("sortLabel"))}</span>
+        <div class="sort-options">
+          <button type="button" class="sort-chip ${listSort === "name" ? "selected" : ""}" data-sort="name">${escapeHtml(t("sortName"))}</button>
+          <button type="button" class="sort-chip ${listSort === "recent" ? "selected" : ""}" data-sort="recent">${escapeHtml(t("sortRecent"))}</button>
+        </div>
       </div>
       ${
         filtered.length === 0
           ? `
         <div class="empty-state">
           <div class="icon">🍽️</div>
-          <h2>${restaurants.length === 0 ? "No restaurants yet" : "No matches"}</h2>
-          <p>${restaurants.length === 0 ? "Tap + to add your first restaurant." : "Try a different search."}</p>
+          <h2>${restaurants.length === 0 ? escapeHtml(t("noRestaurants")) : escapeHtml(t("noMatches"))}</h2>
+          <p>${restaurants.length === 0 ? escapeHtml(t("tapToAdd")) : escapeHtml(t("trySearch"))}</p>
         </div>`
           : `
         <ul class="list">
@@ -586,7 +843,7 @@ async function renderList() {
                   ${renderRestaurantThumb(r.image)}
                   <div class="info">
                     <div class="title">${escapeHtml(r.name)}</div>
-                    <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}</div>
+                    <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
                   </div>
                   <span class="chevron">›</span>
                 </div>
@@ -595,17 +852,22 @@ async function renderList() {
             )
             .join("")}
         </ul>
-        <p class="swipe-hint">Swipe left on a restaurant to delete</p>`
+        <p class="swipe-hint">${escapeHtml(t("swipeDeleteRestaurant"))}</p>`
       }
     </main>
   `;
 
+  bindLangSelect();
   app.querySelector("#add-btn").addEventListener("click", () => navigate({ view: "add-restaurant" }));
 
   const searchInput = app.querySelector("#search-input");
   searchInput.addEventListener("input", () => {
     listSearch = searchInput.value;
     renderList();
+  });
+
+  app.querySelectorAll(".sort-chip").forEach((chip) => {
+    chip.addEventListener("click", () => setListSort(chip.dataset.sort));
   });
 
   app.querySelectorAll(".list .swipe-row").forEach((row) => {
@@ -618,8 +880,8 @@ async function renderList() {
         const restaurant = await getRestaurant(id);
         if (!restaurant) return;
         confirmDelete(
-          `Delete ${restaurant.name}?`,
-          "This removes the restaurant and all its staff.",
+          t("deleteRestaurantTitle", { name: restaurant.name }),
+          t("deleteRestaurantMsg"),
           async () => {
             await deleteRestaurant(restaurant.id);
             await renderList();
@@ -630,10 +892,6 @@ async function renderList() {
   });
 }
 
-function staffLabel(count) {
-  return count === 1 ? "1 staff member" : `${count} staff members`;
-}
-
 async function renderDetail(id) {
   const restaurant = await getRestaurant(id);
   if (!restaurant) {
@@ -642,56 +900,97 @@ async function renderDetail(id) {
   }
 
   const staff = await getStaffForRestaurant(id);
+  const recentVisits = [...restaurant.visits].reverse().slice(0, 8);
 
   app.innerHTML = `
     <header class="header header-minimal">
-      <button class="back-btn" id="back-btn" type="button" aria-label="Back">‹</button>
-      <h1>${versionBadge()}</h1>
+      <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
+      <h1>${headerMeta()}</h1>
     </header>
     <main class="content">
       <div class="detail-hero">
         ${renderRestaurantThumb(restaurant.image, "detail-photo")}
         <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
       </div>
+
       <div class="section">
-        <div class="section-title">Details</div>
+        <div class="section-title">${escapeHtml(t("lastVisit"))}</div>
+        <div class="card visit-card">
+          <div class="visit-summary">
+            <span class="visit-when">${escapeHtml(formatRelativeVisit(restaurant.lastVisitedAt))}</span>
+          </div>
+          <button class="btn btn-primary full-width" id="log-visit-btn" type="button">${escapeHtml(t("logVisit"))}</button>
+          ${
+            recentVisits.length
+              ? `
+          <div class="visit-history">
+            <div class="visit-history-title">${escapeHtml(t("visitHistory"))}</div>
+            <ul class="visit-list">
+              ${recentVisits.map((ts) => `<li>${escapeHtml(formatVisitDate(ts))}</li>`).join("")}
+            </ul>
+          </div>`
+              : `<p class="visit-empty">${escapeHtml(t("noVisitsYet"))}</p>`
+          }
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">${escapeHtml(t("details"))}</div>
         <div class="card">
           ${
             restaurant.address
               ? `
           <button class="address-btn" id="address-nav" type="button">
-            <span class="label">Address</span>
+            <span class="label">${escapeHtml(t("address"))}</span>
             <span class="address-value">${escapeHtml(restaurant.address)}</span>
-            <span class="address-hint">Tap for Maps or Uber →</span>
+            <span class="address-hint">${escapeHtml(t("addressHint"))}</span>
           </button>`
               : `
           <div class="card-row">
-            <span class="label">Address</span>
-            <span class="value" style="color: var(--text-muted)">No address</span>
+            <span class="label">${escapeHtml(t("address"))}</span>
+            <span class="value muted">${escapeHtml(t("noAddress"))}</span>
+          </div>`
+          }
+          ${
+            restaurant.note
+              ? `
+          <div class="note-block">
+            <span class="label">${escapeHtml(t("note"))}</span>
+            <p class="restaurant-note">${escapeHtml(restaurant.note)}</p>
+          </div>`
+              : `
+          <div class="card-row">
+            <span class="label">${escapeHtml(t("note"))}</span>
+            <span class="value muted">${escapeHtml(t("noNote"))}</span>
           </div>`
           }
         </div>
-        <button class="btn btn-secondary full-width" id="edit-restaurant-btn" type="button">Edit Restaurant</button>
+        <button class="btn btn-secondary full-width" id="edit-restaurant-btn" type="button">${escapeHtml(t("editRestaurant"))}</button>
       </div>
 
       <div class="section">
-        <div class="section-title">Staff</div>
-        <button class="btn btn-primary full-width" id="add-staff-btn" type="button">+ Add Staff Member</button>
+        <div class="section-title">${escapeHtml(t("staff"))}</div>
+        <button class="btn btn-primary full-width" id="add-staff-btn" type="button">${escapeHtml(t("addStaff"))}</button>
         ${
           staff.length === 0
-            ? `<div class="empty-card">No staff yet — tap the button above</div>`
+            ? `<div class="empty-card">${escapeHtml(t("noStaff"))}</div>`
             : `<div class="staff-list">${staff
                 .map((s) => wrapSwipeRow(renderStaffCard(s)))
                 .join("")}</div>
-               <p class="swipe-hint">Swipe left on staff to delete</p>`
+               <p class="swipe-hint">${escapeHtml(t("swipeDeleteStaff"))}</p>`
         }
       </div>
     </main>
   `;
 
+  bindLangSelect();
   app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
   app.querySelector("#edit-restaurant-btn").addEventListener("click", () => navigate({ view: "edit-restaurant", id }));
   app.querySelector("#add-staff-btn").addEventListener("click", () => navigate({ view: "add-staff", restaurantId: id }));
+  app.querySelector("#log-visit-btn").addEventListener("click", async () => {
+    await logVisit(id);
+    await renderDetail(id);
+  });
 
   const addressNav = app.querySelector("#address-nav");
   if (addressNav) {
@@ -705,8 +1004,8 @@ async function renderDetail(id) {
       onDelete: () => {
         const member = staff.find((s) => s.id === staffId);
         confirmDelete(
-          `Delete ${member ? member.name : "staff"}?`,
-          "This cannot be undone.",
+          t("deleteStaffTitle", { name: member ? member.name : "staff" }),
+          t("deleteStaffMsg"),
           async () => {
             await deleteStaff(staffId);
             await renderDetail(id);
@@ -728,6 +1027,7 @@ async function renderRestaurantForm(editId) {
   const isEdit = !!editId;
   let name = "";
   let address = "";
+  let note = "";
   let image = "";
 
   if (editId) {
@@ -738,42 +1038,49 @@ async function renderRestaurantForm(editId) {
     }
     name = restaurant.name;
     address = restaurant.address;
+    note = restaurant.note || "";
     image = restaurant.image || "";
   }
 
   app.innerHTML = `
     <header class="header">
-      <button class="back-btn" id="cancel-btn" type="button" aria-label="Cancel">‹</button>
-      <h1>${isEdit ? "Edit Restaurant" : "New Restaurant"} ${versionBadge()}</h1>
+      <button class="back-btn" id="cancel-btn" type="button" aria-label="${escapeHtml(t("cancel"))}">‹</button>
+      <h1>${isEdit ? escapeHtml(t("editRestaurant")) : escapeHtml(t("newRestaurant"))} ${headerMeta()}</h1>
     </header>
     <main class="content">
       <form class="form" id="restaurant-form">
         <div class="field">
-          <label>Photo</label>
+          <label>${escapeHtml(t("photo"))}</label>
           ${photoPickerMarkup({
             previewImage: image,
-            placeholder: "Add restaurant photo",
+            placeholder: t("addRestaurantPhoto"),
             placeholderClass: "restaurant-photo-preview",
           })}
         </div>
         <div class="field">
-          <label for="name">Name</label>
-          <input id="name" type="text" value="${escapeHtml(name)}" placeholder="Restaurant name" required />
+          <label for="name">${escapeHtml(t("name"))}</label>
+          <input id="name" type="text" value="${escapeHtml(name)}" placeholder="${escapeHtml(t("restaurantName"))}" required />
         </div>
         <div class="field">
-          <label for="address">Address</label>
-          <textarea id="address" placeholder="Street, city">${escapeHtml(address)}</textarea>
+          <label for="address">${escapeHtml(t("address"))}</label>
+          <textarea id="address" placeholder="${escapeHtml(t("streetCity"))}">${escapeHtml(address)}</textarea>
+        </div>
+        <div class="field">
+          <label for="note">${escapeHtml(t("note"))}</label>
+          <textarea id="note" placeholder="${escapeHtml(t("restaurantNotePlaceholder"))}">${escapeHtml(note)}</textarea>
         </div>
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" id="cancel-form">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="save-btn" disabled>Save</button>
+          <button type="button" class="btn btn-secondary" id="cancel-form">${escapeHtml(t("cancel"))}</button>
+          <button type="submit" class="btn btn-primary" id="save-btn" disabled>${escapeHtml(t("save"))}</button>
         </div>
       </form>
     </main>
   `;
 
+  bindLangSelect();
   const nameInput = app.querySelector("#name");
   const addressInput = app.querySelector("#address");
+  const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
   const photoPicker = bindPhotoPicker({ initialImage: image });
 
@@ -795,6 +1102,7 @@ async function renderRestaurantForm(editId) {
       {
         name: trim(nameInput.value),
         address: trim(addressInput.value),
+        note: trim(noteInput.value),
         image: photoPicker.getImagePayload(image),
       },
       editId
@@ -829,55 +1137,56 @@ async function renderStaffForm(restaurantId, editStaffId) {
 
   app.innerHTML = `
     <header class="header">
-      <button class="back-btn" id="cancel-btn" type="button" aria-label="Cancel">‹</button>
-      <h1>${isEdit ? "Edit Staff" : "New Staff"} ${versionBadge()}</h1>
+      <button class="back-btn" id="cancel-btn" type="button" aria-label="${escapeHtml(t("cancel"))}">‹</button>
+      <h1>${isEdit ? escapeHtml(t("editStaff")) : escapeHtml(t("newStaff"))} ${headerMeta()}</h1>
     </header>
     <main class="content">
       <form class="form" id="staff-form">
         <div class="field">
-          <label>Photo</label>
+          <label>${escapeHtml(t("photo"))}</label>
           ${photoPickerMarkup({
             previewImage: image,
-            placeholder: "Add staff photo",
+            placeholder: t("addStaffPhoto"),
             placeholderClass: "staff-photo-preview",
           })}
         </div>
         <div class="form-section">
           <div class="field">
-            <label for="name">Name</label>
-            <input id="name" type="text" value="${escapeHtml(name)}" placeholder="Full name" required />
+            <label for="name">${escapeHtml(t("name"))}</label>
+            <input id="name" type="text" value="${escapeHtml(name)}" placeholder="${escapeHtml(t("fullName"))}" required />
           </div>
           <div class="field">
-            <label for="phone">Phone</label>
+            <label for="phone">${escapeHtml(t("phone"))}</label>
             <input id="phone" type="tel" value="${escapeHtml(phone)}" placeholder="+46 70 123 45 67" />
           </div>
           <div class="field">
-            <label for="email">Email</label>
+            <label for="email">${escapeHtml(t("email"))}</label>
             <input id="email" type="email" value="${escapeHtml(email)}" placeholder="name@example.com" />
           </div>
         </div>
         <div class="field">
-          <label for="role">Role</label>
+          <label for="role">${escapeHtml(t("role"))}</label>
           <div class="role-presets" id="role-presets">
             ${ROLE_PRESETS.map(
               (preset) =>
                 `<button type="button" class="preset-chip" data-role="${preset}">${preset}</button>`
             ).join("")}
           </div>
-          <input id="role" type="text" value="${escapeHtml(role)}" placeholder="Or type a custom role" required />
+          <input id="role" type="text" value="${escapeHtml(role)}" placeholder="${escapeHtml(t("customRole"))}" required />
         </div>
         <div class="field">
-          <label for="note">Note</label>
-          <textarea id="note" placeholder="Short note">${escapeHtml(note)}</textarea>
+          <label for="note">${escapeHtml(t("note"))}</label>
+          <textarea id="note" placeholder="${escapeHtml(t("shortNote"))}">${escapeHtml(note)}</textarea>
         </div>
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" id="cancel-form">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="save-btn" disabled>Save</button>
+          <button type="button" class="btn btn-secondary" id="cancel-form">${escapeHtml(t("cancel"))}</button>
+          <button type="submit" class="btn btn-primary" id="save-btn" disabled>${escapeHtml(t("save"))}</button>
         </div>
       </form>
     </main>
   `;
 
+  bindLangSelect();
   const nameInput = app.querySelector("#name");
   const roleInput = app.querySelector("#role");
   const noteInput = app.querySelector("#note");
@@ -955,8 +1264,8 @@ function confirmDelete(title, message, onConfirm) {
       <h2>${escapeHtml(title)}</h2>
       <p class="modal-text">${escapeHtml(message)}</p>
       <div class="modal-actions">
-        <button class="btn btn-secondary modal-btn" id="modal-cancel" type="button">Cancel</button>
-        <button class="btn btn-delete modal-btn" id="modal-confirm" type="button">Delete</button>
+        <button class="btn btn-secondary modal-btn" id="modal-cancel" type="button">${escapeHtml(t("cancel"))}</button>
+        <button class="btn btn-delete modal-btn" id="modal-confirm" type="button">${escapeHtml(t("delete"))}</button>
       </div>
     </div>
   `;
@@ -973,7 +1282,7 @@ function confirmDelete(title, message, onConfirm) {
       await onConfirm();
       close();
     } catch (err) {
-      alert("Could not delete. Please try again.");
+      alert(t("couldNotDelete"));
       console.error(err);
     }
   }
@@ -987,8 +1296,5 @@ function confirmDelete(title, message, onConfirm) {
   overlay.querySelector("#modal-confirm").addEventListener("click", runDelete);
 }
 
-function showConfirmDialog(title, message, onConfirm) {
-  confirmDelete(title, message, onConfirm);
-}
-
+document.documentElement.lang = lang === "sv" ? "sv" : "en";
 render();
