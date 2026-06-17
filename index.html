@@ -13,15 +13,41 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=3" />
     <title>Restaurant CRM</title>
   </head>
   <body>
     <div id="app"></div>
-    <script src="app.js"></script>
+    <script src="app.js?v=3"></script>
     <script>
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js");
+        navigator.serviceWorker.register("./sw.js?v=3").then(function (registration) {
+          registration.update();
+
+          function refreshIfWaiting(worker) {
+            if (!worker) return;
+            worker.postMessage({ type: "SKIP_WAITING" });
+            worker.addEventListener("statechange", function () {
+              if (worker.state === "activated") {
+                window.location.reload();
+              }
+            });
+          }
+
+          if (registration.waiting) {
+            refreshIfWaiting(registration.waiting);
+          }
+
+          registration.addEventListener("updatefound", function () {
+            var newWorker = registration.installing;
+            if (!newWorker) return;
+            newWorker.addEventListener("statechange", function () {
+              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                refreshIfWaiting(newWorker);
+              }
+            });
+          });
+        });
       }
     </script>
   </body>

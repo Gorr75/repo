@@ -1,3 +1,5 @@
+/* Restaurant CRM v3 */
+
 /* ── IndexedDB layer ── */
 
 const DB_NAME = "restaurant-crm";
