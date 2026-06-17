@@ -103,6 +103,7 @@ async function saveStaff(restaurantId, data, id) {
     restaurantId,
     name: data.name,
     role: data.role,
+    note: data.note || "",
     createdAt: Date.now(),
   };
   await dbRequest(db.transaction("staff", "readwrite").objectStore("staff").add(staff));
@@ -251,11 +252,14 @@ async function renderDetail(id) {
           </div>
         </div>
         <div class="section">
-          <div class="section-title">Staff</div>
+          <div class="section-header">
+            <div class="section-title">Staff</div>
+            <button class="add-staff-btn" id="add-staff-inline" type="button">+ Add Staff</button>
+          </div>
           <div class="card">
             ${
               staff.length === 0
-                ? `<div class="card-row"><span style="color: var(--text-muted)">No staff added</span></div>`
+                ? `<div class="card-row"><span style="color: var(--text-muted)">No staff added yet</span></div>`
                 : staff
                     .map(
                       (s) => `
@@ -263,6 +267,7 @@ async function renderDetail(id) {
                 <div class="info">
                   <div class="name">${escapeHtml(s.name)}</div>
                   <div class="role">${escapeHtml(s.role)}</div>
+                  ${s.note ? `<div class="note">${escapeHtml(s.note)}</div>` : ""}
                 </div>
                 <div class="actions">
                   <button class="text-btn edit-staff-btn" data-id="${s.id}">Edit</button>
@@ -282,6 +287,10 @@ async function renderDetail(id) {
 
   function bindDetailEvents() {
     app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
+
+    app.querySelector("#add-staff-inline").addEventListener("click", () => {
+      navigate({ view: "add-staff", restaurantId: id });
+    });
 
     app.querySelector("#menu-btn").addEventListener("click", () => {
       menuOpen = !menuOpen;
@@ -415,6 +424,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
   const isEdit = !!editStaffId;
   let name = "";
   let role = "";
+  let note = "";
 
   if (editStaffId) {
     const members = await getStaffForRestaurant(restaurantId);
@@ -425,6 +435,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
     }
     name = member.name;
     role = member.role;
+    note = member.note || "";
   }
 
   app.innerHTML = `
@@ -442,6 +453,10 @@ async function renderStaffForm(restaurantId, editStaffId) {
           <label for="role">Role</label>
           <input id="role" type="text" value="${escapeHtml(role)}" placeholder="e.g. Manager, Server" required />
         </div>
+        <div class="field">
+          <label for="note">Note</label>
+          <textarea id="note" placeholder="Short note (e.g. prefers window table, speaks Spanish)">${escapeHtml(note)}</textarea>
+        </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" id="cancel-form">Cancel</button>
           <button type="submit" class="btn btn-primary" id="save-btn" disabled>Save</button>
@@ -452,6 +467,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
 
   const nameInput = app.querySelector("#name");
   const roleInput = app.querySelector("#role");
+  const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
 
   function updateSave() {
@@ -471,7 +487,11 @@ async function renderStaffForm(restaurantId, editStaffId) {
     e.preventDefault();
     await saveStaff(
       restaurantId,
-      { name: trim(nameInput.value), role: trim(roleInput.value) },
+      {
+        name: trim(nameInput.value),
+        role: trim(roleInput.value),
+        note: trim(noteInput.value),
+      },
       editStaffId
     );
     navigate({ view: "detail", id: restaurantId });
