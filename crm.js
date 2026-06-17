@@ -1,6 +1,6 @@
-/* Restaurant CRM v6 */
+/* Restaurant CRM v7 */
 
-const APP_VERSION = "v6";
+const APP_VERSION = "v7";
 
 const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
 
@@ -263,7 +263,7 @@ async function renderList() {
                 </div>
                 <span class="chevron">›</span>
               </button>
-              <button class="delete-list-btn delete-restaurant-list" type="button" data-id="${r.id}">Delete</button>
+              <button class="delete-list-btn delete-restaurant-list" type="button" data-id="${r.id}" aria-label="Delete restaurant">✕</button>
             </li>`
             )
             .join("")}
@@ -369,7 +369,7 @@ async function renderDetail(id) {
         </div>
       </div>
 
-      <button class="btn btn-danger full-width" id="delete-restaurant-btn" type="button">Delete Restaurant</button>
+      <button class="btn btn-danger btn-danger-compact" id="delete-restaurant-btn" type="button">Delete Restaurant</button>
     </main>
   `;
 
