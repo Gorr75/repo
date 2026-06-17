@@ -1,6 +1,7 @@
-/* Restaurant CRM v9 */
+/* Restaurant CRM v10 */
 
-const APP_VERSION = "v9";
+const APP_VERSION = "v10";
+const SWIPE_DELETE_WIDTH = 80;
 
 const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
 
@@ -300,10 +301,108 @@ function renderStaffCard(s) {
         ${s.note ? `<p class="contact-note">${escapeHtml(s.note)}</p>` : ""}
         <div class="contact-actions">
           <button class="btn-text edit-staff-btn" type="button" data-id="${s.id}">Edit</button>
-          <button class="btn-text danger delete-staff-btn" type="button" data-id="${s.id}">Delete</button>
         </div>
       </div>
     </div>`;
+}
+
+function wrapSwipeRow(contentHtml) {
+  return `
+    <div class="swipe-row">
+      <div class="swipe-behind">
+        <button class="swipe-delete-btn" type="button">Delete</button>
+      </div>
+      <div class="swipe-front">${contentHtml}</div>
+    </div>`;
+}
+
+let openSwipeRow = null;
+
+function closeAllSwipes() {
+  document.querySelectorAll(".swipe-row.open").forEach((row) => {
+    row.classList.remove("open");
+    const front = row.querySelector(".swipe-front");
+    if (front) front.style.transform = "";
+  });
+  openSwipeRow = null;
+}
+
+function bindSwipeRow(row, { onTap, onDelete }) {
+  const front = row.querySelector(".swipe-front");
+  const deleteBtn = row.querySelector(".swipe-delete-btn");
+  if (!front || !deleteBtn) return;
+
+  let startX = 0;
+  let baseOffset = 0;
+  let dragging = false;
+
+  deleteBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAllSwipes();
+    onDelete();
+  });
+
+  front.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length !== 1) return;
+      if (openSwipeRow && openSwipeRow !== row) closeAllSwipes();
+      startX = e.touches[0].clientX;
+      baseOffset = row.classList.contains("open") ? -SWIPE_DELETE_WIDTH : 0;
+      dragging = true;
+    },
+    { passive: true }
+  );
+
+  front.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!dragging) return;
+      const delta = e.touches[0].clientX - startX;
+      let offset = baseOffset + delta;
+      if (offset > 0) offset = 0;
+      if (offset < -SWIPE_DELETE_WIDTH) offset = -SWIPE_DELETE_WIDTH;
+      front.style.transform = `translateX(${offset}px)`;
+    },
+    { passive: true }
+  );
+
+  front.addEventListener("touchend", () => {
+    if (!dragging) return;
+    dragging = false;
+    const match = front.style.transform.match(/-?\d+/);
+    const offset = match ? parseInt(match[0], 10) : 0;
+
+    if (offset < -SWIPE_DELETE_WIDTH / 2) {
+      closeAllSwipes();
+      row.classList.add("open");
+      front.style.transform = `translateX(-${SWIPE_DELETE_WIDTH}px)`;
+      openSwipeRow = row;
+    } else {
+      row.classList.remove("open");
+      front.style.transform = "";
+      if (openSwipeRow === row) openSwipeRow = null;
+    }
+  });
+
+  front.addEventListener("click", (e) => {
+    if (row.classList.contains("open")) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeAllSwipes();
+      return;
+    }
+    if (e.target.closest("a, .edit-staff-btn, .contact-link")) return;
+    if (onTap) onTap(e);
+  });
+}
+
+if (!window._swipeDocBound) {
+  document.addEventListener("touchstart", (e) => {
+    if (!openSwipeRow) return;
+    if (!openSwipeRow.contains(e.target)) closeAllSwipes();
+  });
+  window._swipeDocBound = true;
 }
 
 async function render() {
@@ -361,20 +460,22 @@ async function renderList() {
           ${filtered
             .map(
               (r, i) => `
-            <li class="list-row">
-              <button class="restaurant-card" type="button" data-id="${r.id}">
-                <div class="restaurant-icon">🍽</div>
-                <div class="info">
-                  <div class="title">${escapeHtml(r.name)}</div>
-                  <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}</div>
+            <li>
+              ${wrapSwipeRow(`
+                <div class="restaurant-card" data-id="${r.id}">
+                  <div class="restaurant-icon">🍽</div>
+                  <div class="info">
+                    <div class="title">${escapeHtml(r.name)}</div>
+                    <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}</div>
+                  </div>
+                  <span class="chevron">›</span>
                 </div>
-                <span class="chevron">›</span>
-              </button>
-              <button class="delete-list-btn delete-restaurant-list" type="button" data-id="${r.id}" aria-label="Delete restaurant">✕</button>
+              `)}
             </li>`
             )
             .join("")}
-        </ul>`
+        </ul>
+        <p class="swipe-hint">Swipe left on a restaurant to delete</p>`
       }
     </main>
   `;
@@ -387,24 +488,24 @@ async function renderList() {
     renderList();
   });
 
-  app.querySelectorAll(".restaurant-card").forEach((el) => {
-    el.addEventListener("click", () => navigate({ view: "detail", id: el.dataset.id }));
-  });
-
-  app.querySelectorAll(".delete-restaurant-list").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const restaurant = await getRestaurant(btn.dataset.id);
-      if (!restaurant) return;
-      confirmDelete(
-        `Delete ${restaurant.name}?`,
-        "This removes the restaurant and all its staff.",
-        async () => {
-          await deleteRestaurant(restaurant.id);
-          await renderList();
-        }
-      );
+  app.querySelectorAll(".list .swipe-row").forEach((row) => {
+    const card = row.querySelector(".restaurant-card");
+    if (!card) return;
+    const id = card.dataset.id;
+    bindSwipeRow(row, {
+      onTap: () => navigate({ view: "detail", id }),
+      onDelete: async () => {
+        const restaurant = await getRestaurant(id);
+        if (!restaurant) return;
+        confirmDelete(
+          `Delete ${restaurant.name}?`,
+          "This removes the restaurant and all its staff.",
+          async () => {
+            await deleteRestaurant(restaurant.id);
+            await renderList();
+          }
+        );
+      },
     });
   });
 }
@@ -455,11 +556,24 @@ async function renderDetail(id) {
         ${
           staff.length === 0
             ? `<div class="empty-card">No staff yet — tap the button above</div>`
-            : `<div class="staff-list">${staff.map((s) => renderStaffCard(s)).join("")}</div>`
+            : `<div class="staff-list">${staff
+                .map((s) => wrapSwipeRow(renderStaffCard(s)))
+                .join("")}</div>
+               <p class="swipe-hint">Swipe left on staff to delete</p>`
         }
       </div>
 
-      <button class="btn btn-danger btn-danger-compact" id="delete-restaurant-btn" type="button">Delete Restaurant</button>
+      <div class="section">
+        <div class="section-title">Danger Zone</div>
+        <div id="restaurant-delete-swipe">
+        ${wrapSwipeRow(`
+          <div class="danger-row">
+            <span>Delete Restaurant</span>
+          </div>
+        `)}
+        </div>
+        <p class="swipe-hint">Swipe left to delete this restaurant</p>
+      </div>
     </main>
   `;
 
@@ -472,34 +586,44 @@ async function renderDetail(id) {
     addressNav.addEventListener("click", () => showNavigationPicker(restaurant));
   }
 
-  app.querySelector("#delete-restaurant-btn").addEventListener("click", () => {
-    confirmDelete(
-      `Delete ${restaurant.name}?`,
-      "This removes the restaurant and all its staff.",
-      async () => {
-        await deleteRestaurant(id);
-        navigate({ view: "list" });
-      }
-    );
-  });
+  const dangerSwipe = app.querySelector("#restaurant-delete-swipe .swipe-row");
+  if (dangerSwipe) {
+    bindSwipeRow(dangerSwipe, {
+      onDelete: () => {
+        confirmDelete(
+          `Delete ${restaurant.name}?`,
+          "This removes the restaurant and all its staff.",
+          async () => {
+            await deleteRestaurant(id);
+            navigate({ view: "list" });
+          }
+        );
+      },
+    });
+  }
 
-  app.querySelectorAll(".edit-staff-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      navigate({ view: "edit-staff", restaurantId: id, staffId: btn.dataset.id });
+  app.querySelectorAll(".staff-list .swipe-row").forEach((row) => {
+    const staffId = row.querySelector(".edit-staff-btn")?.dataset.id;
+    if (!staffId) return;
+    bindSwipeRow(row, {
+      onDelete: () => {
+        const member = staff.find((s) => s.id === staffId);
+        confirmDelete(
+          `Delete ${member ? member.name : "staff"}?`,
+          "This cannot be undone.",
+          async () => {
+            await deleteStaff(staffId);
+            await renderDetail(id);
+          }
+        );
+      },
     });
   });
 
-  app.querySelectorAll(".delete-staff-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const member = staff.find((s) => s.id === btn.dataset.id);
-      confirmDelete(
-        `Delete ${member ? member.name : "staff"}?`,
-        "This cannot be undone.",
-        async () => {
-          await deleteStaff(btn.dataset.id);
-          await renderDetail(id);
-        }
-      );
+  app.querySelectorAll(".edit-staff-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigate({ view: "edit-staff", restaurantId: id, staffId: btn.dataset.id });
     });
   });
 }
