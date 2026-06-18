@@ -1158,6 +1158,11 @@ textarea {
   color: white;
 }
 
+.staff-browse-list .swipe-front .staff-browse-card {
+  border-radius: 0;
+  background: transparent;
+}
+
 .staff-browse-list .staff-browse-card {
   width: 100%;
   text-align: left;

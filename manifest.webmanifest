@@ -2,7 +2,7 @@
   "name": "Restaurant CRM",
   "short_name": "Restaurant CRM",
   "description": "Remember staff and managers at your favorite restaurants",
-  "start_url": "./?v=19",
+  "start_url": "./?v=20",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",

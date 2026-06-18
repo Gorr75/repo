@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v19";
+const APP_VERSION = "v20";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
@@ -1683,23 +1683,26 @@ async function renderList() {
               const phone = s.phone ? trim(s.phone) : "";
               return `
             <li>
-              <button type="button" class="restaurant-card staff-browse-card" data-restaurant-id="${s.restaurantId}">
-                ${renderStaffAvatar(s)}
-                <div class="info">
-                  <div class="title">${escapeHtml(s.name)}</div>
-                  <div class="subtitle"><span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span> · ${escapeHtml(s.restaurant.name)}</div>
+              ${wrapSwipeRow(`
+                <div class="restaurant-card staff-browse-card" data-staff-id="${s.id}" data-restaurant-id="${s.restaurantId}">
+                  ${renderStaffAvatar(s)}
+                  <div class="info">
+                    <div class="title">${escapeHtml(s.name)}</div>
+                    <div class="subtitle"><span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span> · ${escapeHtml(s.restaurant.name)}</div>
+                  </div>
+                  ${
+                    phone
+                      ? `<a class="call-btn call-btn-list" href="tel:${formatPhoneLink(phone)}" aria-label="${escapeHtml(t("call"))}">📞</a>`
+                      : ""
+                  }
+                  <span class="chevron">›</span>
                 </div>
-                ${
-                  phone
-                    ? `<a class="call-btn call-btn-list" href="tel:${formatPhoneLink(phone)}" aria-label="${escapeHtml(t("call"))}" onclick="event.stopPropagation()">📞</a>`
-                    : ""
-                }
-                <span class="chevron">›</span>
-              </button>
+              `)}
             </li>`;
             })
             .join("")}
-        </ul>`;
+        </ul>
+        <p class="swipe-hint">${escapeHtml(t("swipeDeleteStaff"))}</p>`;
   } else {
     const restaurants = sortRestaurants(allRestaurants, listSort);
     let filtered = restaurants.filter((r) => restaurantMatchesSearch(r, query));
@@ -1827,9 +1830,29 @@ async function renderList() {
     });
   });
 
-  app.querySelectorAll(".staff-browse-card").forEach((card) => {
-    card.addEventListener("click", () => navigate({ view: "detail", id: card.dataset.restaurantId }));
-  });
+  if (isStaffMode) {
+    app.querySelectorAll(".staff-browse-list .swipe-row").forEach((row) => {
+      const card = row.querySelector(".staff-browse-card");
+      if (!card) return;
+      const staffId = card.dataset.staffId;
+      const restaurantId = card.dataset.restaurantId;
+      bindSwipeRow(row, {
+        onTap: () => navigate({ view: "detail", id: restaurantId }),
+        onDelete: async () => {
+          const allEntries = await getStaffListEntries("");
+          const member = allEntries.find((s) => s.id === staffId);
+          confirmDelete(
+            t("deleteStaffTitle", { name: member ? member.name : "staff" }),
+            t("deleteStaffMsg"),
+            async () => {
+              await deleteStaff(staffId);
+              await renderList();
+            }
+          );
+        },
+      });
+    });
+  }
 
   if (!isStaffMode && !isMapMode) {
     app.querySelectorAll(".list .swipe-row").forEach((row) => {
