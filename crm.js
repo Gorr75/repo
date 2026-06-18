@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v18";
+const APP_VERSION = "v19";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
@@ -139,6 +139,8 @@ const I18N = {
     searchModeRestaurants: "Restaurants",
     searchModeStaff: "Staff",
     noStaffMatches: "No staff found",
+    noStaffList: "No staff yet",
+    noStaffListHint: "Open a restaurant and tap + Add Staff Member.",
     staffAt: "at {name}",
     backupReminderTitle: "Time for a backup?",
     backupReminderMsg: "You have not exported a backup in over {n} days. Save one to iCloud Drive to protect your data.",
@@ -264,6 +266,8 @@ const I18N = {
     searchModeRestaurants: "Restauranger",
     searchModeStaff: "Personal",
     noStaffMatches: "Ingen personal hittades",
+    noStaffList: "Ingen personal ännu",
+    noStaffListHint: "Öppna en restaurang och tryck + Lägg till personal.",
     staffAt: "på {name}",
     backupReminderTitle: "Dags att säkerhetskopiera?",
     backupReminderMsg: "Du har inte exporterat en säkerhetskopia på över {n} dagar. Spara en i iCloud Drive för att skydda din data.",
@@ -980,24 +984,28 @@ function setAutoBackup(mode) {
   render();
 }
 
-async function searchStaffGlobally(query) {
-  const q = query.toLowerCase();
-  if (!q) return [];
+async function getStaffListEntries(query = "") {
+  const q = trim(query).toLowerCase();
   const [staff, restaurants] = await Promise.all([getAllStaff(), getAllRestaurants()]);
   const byId = Object.fromEntries(restaurants.map((r) => [r.id, r]));
-  return staff
-    .filter(
+  let entries = staff
+    .map((s) => ({ ...s, restaurant: byId[s.restaurantId] }))
+    .filter((s) => s.restaurant);
+
+  if (q) {
+    entries = entries.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         (s.role || "").toLowerCase().includes(q) ||
         roleLabel(s.role).toLowerCase().includes(q) ||
         (s.note || "").toLowerCase().includes(q) ||
         (s.phone || "").toLowerCase().includes(q) ||
-        (s.email || "").toLowerCase().includes(q)
-    )
-    .map((s) => ({ ...s, restaurant: byId[s.restaurantId] }))
-    .filter((s) => s.restaurant)
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+        (s.email || "").toLowerCase().includes(q) ||
+        s.restaurant.name.toLowerCase().includes(q)
+    );
+  }
+
+  return entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
 async function importAllData(file) {
@@ -1655,31 +1663,41 @@ async function renderList() {
         <div id="restaurant-map" class="restaurant-map" role="application" aria-label="${escapeHtml(t("tabMap"))}"></div>
       </div>`;
   } else if (isStaffMode) {
-    const staffResults = await searchStaffGlobally(listSearch);
+    const allStaffEntries = await getStaffListEntries("");
+    const staffResults = listSearch.trim()
+      ? await getStaffListEntries(listSearch)
+      : allStaffEntries;
+
     listBodyHtml =
       staffResults.length === 0
         ? `
         <div class="empty-state">
           <div class="icon">👤</div>
-          <h2>${escapeHtml(t("noStaffMatches"))}</h2>
-          <p>${escapeHtml(t("trySearch"))}</p>
+          <h2>${escapeHtml(allStaffEntries.length === 0 ? t("noStaffList") : t("noStaffMatches"))}</h2>
+          <p>${escapeHtml(allStaffEntries.length === 0 ? t("noStaffListHint") : t("trySearch"))}</p>
         </div>`
         : `
-        <ul class="list staff-search-list">
+        <ul class="list staff-browse-list">
           ${staffResults
-            .map(
-              (s) => `
+            .map((s) => {
+              const phone = s.phone ? trim(s.phone) : "";
+              return `
             <li>
-              <button type="button" class="staff-search-card" data-restaurant-id="${s.restaurantId}">
+              <button type="button" class="restaurant-card staff-browse-card" data-restaurant-id="${s.restaurantId}">
                 ${renderStaffAvatar(s)}
                 <div class="info">
                   <div class="title">${escapeHtml(s.name)}</div>
-                  <div class="subtitle">${escapeHtml(roleLabel(s.role))} · ${escapeHtml(t("staffAt", { name: s.restaurant.name }))}</div>
+                  <div class="subtitle"><span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span> · ${escapeHtml(s.restaurant.name)}</div>
                 </div>
+                ${
+                  phone
+                    ? `<a class="call-btn call-btn-list" href="tel:${formatPhoneLink(phone)}" aria-label="${escapeHtml(t("call"))}" onclick="event.stopPropagation()">📞</a>`
+                    : ""
+                }
                 <span class="chevron">›</span>
               </button>
-            </li>`
-            )
+            </li>`;
+            })
             .join("")}
         </ul>`;
   } else {
@@ -1809,7 +1827,7 @@ async function renderList() {
     });
   });
 
-  app.querySelectorAll(".staff-search-card").forEach((card) => {
+  app.querySelectorAll(".staff-browse-card").forEach((card) => {
     card.addEventListener("click", () => navigate({ view: "detail", id: card.dataset.restaurantId }));
   });
 

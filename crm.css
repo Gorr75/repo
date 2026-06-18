@@ -1158,23 +1158,30 @@ textarea {
   color: white;
 }
 
-.staff-search-list {
-  margin-top: 4px;
-}
-
-.staff-search-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.staff-browse-list .staff-browse-card {
   width: 100%;
-  padding: 14px 16px;
   text-align: left;
   background: var(--bg-elevated);
   border-radius: var(--radius-lg);
 }
 
-.staff-search-card:active {
-  background: var(--bg-secondary);
+.staff-browse-card .subtitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.staff-browse-card .subtitle .role-badge {
+  font-size: 0.62rem;
+  padding: 2px 7px;
+}
+
+.call-btn-list {
+  margin-left: 0;
+  width: 34px;
+  height: 34px;
+  font-size: 0.95rem;
 }
 
 .pin-btn {
