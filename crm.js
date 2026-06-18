@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v16";
+const APP_VERSION = "v17";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
@@ -145,6 +145,10 @@ const I18N = {
     noLink: "No link",
     openLink: "Open link",
     clearTagFilters: "Clear filters",
+    settings: "Settings",
+    language: "Language",
+    langEnglish: "English",
+    langSwedish: "Svenska",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -257,6 +261,10 @@ const I18N = {
     noLink: "Ingen länk",
     openLink: "Öppna länk",
     clearTagFilters: "Rensa filter",
+    settings: "Inställningar",
+    language: "Språk",
+    langEnglish: "English",
+    langSwedish: "Svenska",
   },
 };
 
@@ -911,7 +919,7 @@ function showBackupReminder() {
 
 function setAutoBackup(mode) {
   localStorage.setItem(AUTO_BACKUP_KEY, mode);
-  renderList();
+  render();
 }
 
 async function searchStaffGlobally(query) {
@@ -1141,22 +1149,60 @@ function versionBadge() {
   return `<span class="version-badge">${APP_VERSION}</span>`;
 }
 
-function langSelectMarkup() {
+function backupSectionMarkup(autoBackupMode) {
   return `
-    <select class="lang-select" id="lang-select" aria-label="Language">
-      <option value="en" ${lang === "en" ? "selected" : ""}>ENG</option>
-      <option value="sv" ${lang === "sv" ? "selected" : ""}>SV</option>
-    </select>`;
+    <div class="section settings-section">
+      <div class="section-title">${escapeHtml(t("backup"))}</div>
+      <div class="card settings-card">
+        <p class="data-hint">${escapeHtml(t("backupHint"))}</p>
+        <button class="btn btn-secondary full-width" id="export-btn" type="button">${escapeHtml(t("exportData"))}</button>
+        <label class="btn btn-secondary full-width import-label">
+          ${escapeHtml(t("importData"))}
+          <input type="file" id="import-input" accept=".json,application/json" hidden />
+        </label>
+        <div class="auto-backup-block">
+          <span class="sort-label">${escapeHtml(t("autoBackup"))}</span>
+          <div class="sort-options auto-backup-options">
+            <button type="button" class="sort-chip ${autoBackupMode === "off" ? "selected" : ""}" data-auto-backup="off">${escapeHtml(t("autoBackupOff"))}</button>
+            <button type="button" class="sort-chip ${autoBackupMode === "weekly" ? "selected" : ""}" data-auto-backup="weekly">${escapeHtml(t("autoBackupWeekly"))}</button>
+            <button type="button" class="sort-chip ${autoBackupMode === "visit" ? "selected" : ""}" data-auto-backup="visit">${escapeHtml(t("autoBackupVisit"))}</button>
+          </div>
+          <p class="data-hint auto-backup-hint">${escapeHtml(t("autoBackupHint"))}</p>
+        </div>
+      </div>
+    </div>`;
 }
 
-function headerMeta() {
-  return `<span class="header-meta">${versionBadge()}${langSelectMarkup()}</span>`;
+function bindLanguageControls() {
+  app.querySelectorAll("[data-lang]").forEach((chip) => {
+    chip.addEventListener("click", () => setLang(chip.dataset.lang));
+  });
 }
 
-function bindLangSelect() {
-  const select = app.querySelector("#lang-select");
-  if (!select) return;
-  select.addEventListener("change", () => setLang(select.value));
+function bindBackupControls({ onImportComplete } = {}) {
+  app.querySelectorAll("[data-auto-backup]").forEach((chip) => {
+    chip.addEventListener("click", () => setAutoBackup(chip.dataset.autoBackup));
+  });
+  app.querySelector("#export-btn")?.addEventListener("click", () => exportAllData());
+  const importInput = app.querySelector("#import-input");
+  importInput?.addEventListener("change", async () => {
+    const file = importInput.files?.[0];
+    importInput.value = "";
+    if (!file) return;
+    confirmDelete(t("importConfirmTitle"), t("importConfirmMsg"), async () => {
+      try {
+        await importAllData(file);
+        listSearch = "";
+        listTagFilters = [];
+        localStorage.removeItem(TAG_FILTER_KEY);
+        alert(t("importDone"));
+        if (onImportComplete) await onImportComplete();
+      } catch (err) {
+        alert(t("importFailed"));
+        console.error(err);
+      }
+    }, t("importConfirm"));
+  });
 }
 
 function getInitials(name) {
@@ -1347,14 +1393,43 @@ async function render() {
     case "edit-staff":
       await renderStaffForm(route.restaurantId, route.staffId);
       break;
+    case "settings":
+      renderSettings();
+      break;
   }
+}
+
+function renderSettings() {
+  const autoBackupMode = localStorage.getItem(AUTO_BACKUP_KEY) || "off";
+
+  app.innerHTML = `
+    <header class="header">
+      <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
+      <h1>${escapeHtml(t("settings"))} ${versionBadge()}</h1>
+    </header>
+    <main class="content">
+      <div class="section settings-section">
+        <div class="section-title">${escapeHtml(t("language"))}</div>
+        <div class="card settings-card">
+          <div class="sort-options lang-options">
+            <button type="button" class="sort-chip ${lang === "en" ? "selected" : ""}" data-lang="en">${escapeHtml(t("langEnglish"))}</button>
+            <button type="button" class="sort-chip ${lang === "sv" ? "selected" : ""}" data-lang="sv">${escapeHtml(t("langSwedish"))}</button>
+          </div>
+        </div>
+      </div>
+      ${backupSectionMarkup(autoBackupMode)}
+    </main>
+  `;
+
+  app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
+  bindLanguageControls();
+  bindBackupControls({ onImportComplete: () => navigate({ view: "list" }) });
 }
 
 async function renderList() {
   await checkWeeklyAutoBackup();
 
   const allRestaurants = await getAllRestaurants();
-  const autoBackupMode = localStorage.getItem(AUTO_BACKUP_KEY) || "off";
   const isStaffMode = listMode === "staff";
   const query = listSearch.toLowerCase();
 
@@ -1448,8 +1523,11 @@ async function renderList() {
 
   app.innerHTML = `
     <header class="header">
-      <h1>${APP_NAME} ${headerMeta()}</h1>
-      <button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>
+      <h1>${APP_NAME} ${versionBadge()}</h1>
+      <div class="header-actions">
+        <button class="icon-btn icon-btn-ghost" id="settings-btn" type="button" aria-label="${escapeHtml(t("settings"))}">⚙</button>
+        <button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>
+      </div>
     </header>
     <main class="content">
       <div class="search-mode-row">
@@ -1472,30 +1550,11 @@ async function renderList() {
           : ""
       }
       ${listBodyHtml}
-
-      <div class="section data-section">
-        <div class="section-title">${escapeHtml(t("backup"))}</div>
-        <p class="data-hint">${escapeHtml(t("backupHint"))}</p>
-        <button class="btn btn-secondary full-width" id="export-btn" type="button">${escapeHtml(t("exportData"))}</button>
-        <label class="btn btn-secondary full-width import-label">
-          ${escapeHtml(t("importData"))}
-          <input type="file" id="import-input" accept=".json,application/json" hidden />
-        </label>
-        <div class="auto-backup-block">
-          <span class="sort-label">${escapeHtml(t("autoBackup"))}</span>
-          <div class="sort-options auto-backup-options">
-            <button type="button" class="sort-chip ${autoBackupMode === "off" ? "selected" : ""}" data-auto-backup="off">${escapeHtml(t("autoBackupOff"))}</button>
-            <button type="button" class="sort-chip ${autoBackupMode === "weekly" ? "selected" : ""}" data-auto-backup="weekly">${escapeHtml(t("autoBackupWeekly"))}</button>
-            <button type="button" class="sort-chip ${autoBackupMode === "visit" ? "selected" : ""}" data-auto-backup="visit">${escapeHtml(t("autoBackupVisit"))}</button>
-          </div>
-          <p class="data-hint auto-backup-hint">${escapeHtml(t("autoBackupHint"))}</p>
-        </div>
-      </div>
     </main>
   `;
 
-  bindLangSelect();
   app.querySelector("#add-btn").addEventListener("click", () => navigate({ view: "add-restaurant" }));
+  app.querySelector("#settings-btn").addEventListener("click", () => navigate({ view: "settings" }));
 
   const searchInput = app.querySelector("#search-input");
   searchInput.addEventListener("input", () => {
@@ -1527,32 +1586,6 @@ async function renderList() {
 
   app.querySelectorAll(".staff-search-card").forEach((card) => {
     card.addEventListener("click", () => navigate({ view: "detail", id: card.dataset.restaurantId }));
-  });
-
-  app.querySelectorAll("[data-auto-backup]").forEach((chip) => {
-    chip.addEventListener("click", () => setAutoBackup(chip.dataset.autoBackup));
-  });
-
-  app.querySelector("#export-btn")?.addEventListener("click", () => exportAllData());
-
-  const importInput = app.querySelector("#import-input");
-  importInput?.addEventListener("change", async () => {
-    const file = importInput.files?.[0];
-    importInput.value = "";
-    if (!file) return;
-    confirmDelete(t("importConfirmTitle"), t("importConfirmMsg"), async () => {
-      try {
-        await importAllData(file);
-        listSearch = "";
-        listTagFilters = [];
-        localStorage.removeItem(TAG_FILTER_KEY);
-        alert(t("importDone"));
-        await renderList();
-      } catch (err) {
-        alert(t("importFailed"));
-        console.error(err);
-      }
-    }, t("importConfirm"));
   });
 
   if (!isStaffMode) {
@@ -1596,7 +1629,7 @@ async function renderDetail(id) {
   app.innerHTML = `
     <header class="header header-minimal">
       <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
-      <h1>${headerMeta()}</h1>
+      <h1>${versionBadge()}</h1>
     </header>
     <main class="content">
       <div class="detail-hero">
@@ -1698,7 +1731,6 @@ async function renderDetail(id) {
     </main>
   `;
 
-  bindLangSelect();
   app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
   app.querySelector("#toggle-pin-btn")?.addEventListener("click", async () => {
     await toggleRestaurantPinned(id);
@@ -1783,7 +1815,7 @@ async function renderRestaurantForm(editId) {
   app.innerHTML = `
     <header class="header">
       <button class="back-btn" id="cancel-btn" type="button" aria-label="${escapeHtml(t("cancel"))}">‹</button>
-      <h1>${isEdit ? escapeHtml(t("editRestaurant")) : escapeHtml(t("newRestaurant"))} ${headerMeta()}</h1>
+      <h1>${isEdit ? escapeHtml(t("editRestaurant")) : escapeHtml(t("newRestaurant"))} ${versionBadge()}</h1>
     </header>
     <main class="content">
       <form class="form" id="restaurant-form">
@@ -1823,7 +1855,6 @@ async function renderRestaurantForm(editId) {
     </main>
   `;
 
-  bindLangSelect();
   const nameInput = app.querySelector("#name");
   const addressInput = app.querySelector("#address");
   const linkInput = app.querySelector("#link");
@@ -1888,7 +1919,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
   app.innerHTML = `
     <header class="header">
       <button class="back-btn" id="cancel-btn" type="button" aria-label="${escapeHtml(t("cancel"))}">‹</button>
-      <h1>${isEdit ? escapeHtml(t("editStaff")) : escapeHtml(t("newStaff"))} ${headerMeta()}</h1>
+      <h1>${isEdit ? escapeHtml(t("editStaff")) : escapeHtml(t("newStaff"))} ${versionBadge()}</h1>
     </header>
     <main class="content">
       <form class="form" id="staff-form">
@@ -1936,7 +1967,6 @@ async function renderStaffForm(restaurantId, editStaffId) {
     </main>
   `;
 
-  bindLangSelect();
   const nameInput = app.querySelector("#name");
   const roleInput = app.querySelector("#role");
   const noteInput = app.querySelector("#note");
