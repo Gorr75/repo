@@ -946,3 +946,172 @@ textarea {
   padding: 10px 18px;
   font-size: 0.9rem;
 }
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tag-list-compact {
+  margin-top: 4px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 8px;
+  line-height: 1.2;
+}
+
+.tag-style-wine {
+  background: rgba(191, 90, 242, 0.22);
+  color: #d896ff;
+}
+
+.tag-style-avoid {
+  background: rgba(255, 69, 58, 0.2);
+  color: #ff6961;
+}
+
+.tag-style-dining {
+  background: rgba(255, 159, 10, 0.2);
+  color: #ffb340;
+}
+
+.tag-style-stars {
+  background: rgba(255, 214, 10, 0.18);
+  color: #ffd60a;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+.tag-style-favorite {
+  background: rgba(255, 55, 95, 0.2);
+  color: #ff6482;
+}
+
+.tag-style-michelin {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f5f5f7;
+}
+
+.tag-style-default {
+  background: rgba(10, 132, 255, 0.18);
+  color: #64b5ff;
+}
+
+.tag-style-custom {
+  background: rgba(142, 142, 147, 0.22);
+  color: #c7c7cc;
+}
+
+.tag-filter-row {
+  margin-bottom: 14px;
+}
+
+.tag-filter-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tag-filter-chip {
+  padding: 6px 11px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.tag-filter-chip.selected {
+  outline: 2px solid var(--accent);
+  color: var(--text);
+}
+
+.tag-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tag-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-preset-chip {
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  color: var(--text);
+}
+
+.tag-preset-chip.selected {
+  background: var(--accent);
+  color: white;
+}
+
+.tag-custom-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.tag-custom-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tag-custom-add {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.tag-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.tag-removable {
+  border: none;
+  cursor: pointer;
+}
+
+.tag-empty-hint {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+
+.data-section {
+  margin-top: 28px;
+  padding-top: 8px;
+}
+
+.data-hint {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.import-label {
+  display: block;
+  text-align: center;
+  margin-top: 10px;
+  cursor: pointer;
+}

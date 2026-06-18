@@ -1,11 +1,31 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v14";
+const APP_VERSION = "v15";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
 const SORT_KEY = "restaurant-crm-sort";
+const TAG_FILTER_KEY = "restaurant-crm-tag-filter";
 const MAX_VISITS = 50;
+
+const TAG_PRESETS = [
+  { id: "good-wine", en: "Good wine list", sv: "Bra vinlista", style: "wine" },
+  { id: "avoid", en: "Avoid", sv: "Undvik", style: "avoid" },
+  { id: "fine-dining", en: "Fine dining", sv: "Fine dining", style: "dining" },
+  { id: "star-1", en: "*", sv: "*", style: "stars" },
+  { id: "star-2", en: "**", sv: "**", style: "stars" },
+  { id: "star-3", en: "***", sv: "***", style: "stars" },
+  { id: "favorite", en: "Favorite", sv: "Favorit", style: "favorite" },
+  { id: "michelin", en: "Michelin", sv: "Michelin", style: "michelin" },
+  { id: "casual", en: "Casual", sv: "Avslappnat", style: "default" },
+  { id: "business-lunch", en: "Business lunch", sv: "Affärslunch", style: "default" },
+  { id: "date-night", en: "Date night", sv: "Dejt", style: "default" },
+  { id: "lunch-spot", en: "Lunch spot", sv: "Lunchställe", style: "default" },
+  { id: "great-service", en: "Great service", sv: "Bra service", style: "default" },
+  { id: "outdoor", en: "Outdoor seating", sv: "Uteservering", style: "default" },
+  { id: "special-occasion", en: "Special occasion", sv: "Speciellt tillfälle", style: "default" },
+  { id: "family-friendly", en: "Family friendly", sv: "Barnvänligt", style: "default" },
+];
 
 const I18N = {
   en: {
@@ -80,6 +100,22 @@ const I18N = {
     couldNotLoadPhoto: "Could not load that photo. Try another image.",
     couldNotOpenUber: "Could not open Uber. Check the address and try again.",
     call: "Call",
+    tags: "Tags",
+    noTags: "No tags",
+    addCustomTag: "Add custom tag",
+    customTagPlaceholder: "e.g. Best terrace",
+    filterByTag: "Filter",
+    allTags: "All",
+    backup: "Backup",
+    backupHint: "Automatic iCloud sync is not available for web apps. Export a backup file to iCloud Drive, then import it on another device.",
+    exportData: "Export to file",
+    importData: "Import from file",
+    importConfirmTitle: "Replace all data?",
+    importConfirmMsg: "This replaces all restaurants and staff with the backup file. Export first if you need a copy of current data.",
+    importConfirm: "Import",
+    exportDone: "Backup file downloaded. Save it to iCloud Drive in the Files app.",
+    importDone: "Backup imported successfully.",
+    importFailed: "Could not import that file. Check that it is a valid backup.",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -153,11 +189,28 @@ const I18N = {
     couldNotLoadPhoto: "Kunde inte ladda fotot. Prova en annan bild.",
     couldNotOpenUber: "Kunde inte öppna Uber. Kontrollera adressen och försök igen.",
     call: "Ring",
+    tags: "Taggar",
+    noTags: "Inga taggar",
+    addCustomTag: "Lägg till egen tagg",
+    customTagPlaceholder: "t.ex. Bästa terrassen",
+    filterByTag: "Filter",
+    allTags: "Alla",
+    backup: "Säkerhetskopiera",
+    backupHint: "Automatisk iCloud-synk finns inte för webbappar. Exportera en säkerhetskopia till iCloud Drive och importera den på en annan enhet.",
+    exportData: "Exportera till fil",
+    importData: "Importera från fil",
+    importConfirmTitle: "Ersätt all data?",
+    importConfirmMsg: "Detta ersätter alla restauranger och all personal med säkerhetskopian. Exportera först om du vill behålla nuvarande data.",
+    importConfirm: "Importera",
+    exportDone: "Säkerhetskopian har laddats ner. Spara den i iCloud Drive i appen Filer.",
+    importDone: "Säkerhetskopian har importerats.",
+    importFailed: "Kunde inte importera filen. Kontrollera att det är en giltig säkerhetskopia.",
   },
 };
 
 let lang = localStorage.getItem(LANG_KEY) || "en";
 let listSort = localStorage.getItem(SORT_KEY) || "name";
+let listTagFilter = localStorage.getItem(TAG_FILTER_KEY) || "";
 
 function t(key, params = {}) {
   let text = I18N[lang]?.[key] ?? I18N.en[key] ?? key;
@@ -178,6 +231,149 @@ function setListSort(next) {
   listSort = next;
   localStorage.setItem(SORT_KEY, next);
   renderList();
+}
+
+function setListTagFilter(next) {
+  listTagFilter = next;
+  if (listTagFilter) {
+    localStorage.setItem(TAG_FILTER_KEY, listTagFilter);
+  } else {
+    localStorage.removeItem(TAG_FILTER_KEY);
+  }
+  renderList();
+}
+
+function tagLabel(tag) {
+  if (tag.startsWith("custom:")) return tag.slice(7);
+  const preset = TAG_PRESETS.find((p) => p.id === tag);
+  if (preset) return lang === "sv" ? preset.sv : preset.en;
+  return tag;
+}
+
+function tagStyleClass(tag) {
+  const preset = TAG_PRESETS.find((p) => p.id === tag);
+  return preset ? preset.style : "custom";
+}
+
+function customTagKey(label) {
+  return `custom:${trim(label)}`;
+}
+
+function renderTagsHtml(tags, { compact = false } = {}) {
+  if (!tags?.length) return "";
+  return `<div class="tag-list ${compact ? "tag-list-compact" : ""}">${tags
+    .map(
+      (tag) =>
+        `<span class="tag-chip tag-style-${tagStyleClass(tag)}">${escapeHtml(tagLabel(tag))}</span>`
+    )
+    .join("")}</div>`;
+}
+
+function tagPickerMarkup(selectedTags = []) {
+  const selected = new Set(selectedTags);
+  return `
+    <div class="tag-picker" id="tag-picker">
+      <div class="tag-presets">
+        ${TAG_PRESETS.map((preset) => {
+          const on = selected.has(preset.id);
+          return `<button type="button" class="tag-preset-chip ${on ? "selected" : ""}" data-tag="${preset.id}">${escapeHtml(lang === "sv" ? preset.sv : preset.en)}</button>`;
+        }).join("")}
+      </div>
+      <div class="tag-custom-row">
+        <input type="text" id="custom-tag-input" placeholder="${escapeHtml(t("customTagPlaceholder"))}" maxlength="40" />
+        <button type="button" class="btn btn-secondary tag-custom-add" id="add-custom-tag">${escapeHtml(t("addCustomTag"))}</button>
+      </div>
+      <div class="tag-selected" id="tag-selected"></div>
+    </div>`;
+}
+
+function bindTagPicker({ initialTags = [] }) {
+  const selected = new Set(initialTags);
+  const picker = app.querySelector("#tag-picker");
+  const selectedEl = app.querySelector("#tag-selected");
+  const customInput = app.querySelector("#custom-tag-input");
+
+  function renderSelected() {
+    if (!selectedEl) return;
+    if (selected.size === 0) {
+      selectedEl.innerHTML = `<span class="tag-empty-hint">${escapeHtml(t("noTags"))}</span>`;
+      return;
+    }
+    selectedEl.innerHTML = [...selected]
+      .map(
+        (tag) =>
+          `<button type="button" class="tag-chip tag-style-${tagStyleClass(tag)} tag-removable" data-remove-tag="${encodeURIComponent(tag)}">${escapeHtml(tagLabel(tag))} ×</button>`
+      )
+      .join("");
+    selectedEl.querySelectorAll("[data-remove-tag]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selected.delete(decodeURIComponent(btn.dataset.removeTag));
+        syncPresetChips();
+        renderSelected();
+      });
+    });
+  }
+
+  function syncPresetChips() {
+    picker?.querySelectorAll(".tag-preset-chip").forEach((chip) => {
+      chip.classList.toggle("selected", selected.has(chip.dataset.tag));
+    });
+  }
+
+  picker?.querySelectorAll(".tag-preset-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const tag = chip.dataset.tag;
+      if (selected.has(tag)) selected.delete(tag);
+      else selected.add(tag);
+      syncPresetChips();
+      renderSelected();
+    });
+  });
+
+  function addCustomTag() {
+    const label = trim(customInput?.value || "");
+    if (!label) return;
+    const key = customTagKey(label);
+    selected.add(key);
+    if (customInput) customInput.value = "";
+    syncPresetChips();
+    renderSelected();
+  }
+
+  app.querySelector("#add-custom-tag")?.addEventListener("click", addCustomTag);
+  customInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addCustomTag();
+    }
+  });
+
+  syncPresetChips();
+  renderSelected();
+
+  return {
+    getTags() {
+      return [...selected];
+    },
+  };
+}
+
+function collectUsedTags(restaurants) {
+  const set = new Set();
+  for (const r of restaurants) {
+    for (const tag of r.tags || []) set.add(tag);
+  }
+  return [...set].sort((a, b) => tagLabel(a).localeCompare(tagLabel(b), undefined, { sensitivity: "base" }));
+}
+
+function restaurantMatchesSearch(r, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  if (r.name.toLowerCase().includes(q)) return true;
+  if ((r.address || "").toLowerCase().includes(q)) return true;
+  if ((r.note || "").toLowerCase().includes(q)) return true;
+  if ((r.tags || []).some((tag) => tagLabel(tag).toLowerCase().includes(q))) return true;
+  return false;
 }
 
 async function processImageFile(file) {
@@ -333,6 +529,7 @@ function normalizeRestaurant(r) {
     ...r,
     note: r.note || "",
     image: r.image || "",
+    tags: Array.isArray(r.tags) ? r.tags : [],
     lastVisitedAt: r.lastVisitedAt || null,
     visits: Array.isArray(r.visits) ? r.visits : [],
   };
@@ -378,6 +575,7 @@ async function saveRestaurant(data, id) {
     address: data.address,
     note: data.note || "",
     image: data.image || "",
+    tags: data.tags || [],
     createdAt: Date.now(),
     lastVisitedAt: null,
     visits: [],
@@ -462,6 +660,64 @@ async function getStaffForRestaurant(restaurantId) {
     db.transaction("staff").objectStore("staff").index("by-restaurant").getAll(restaurantId)
   );
   return staff.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+async function getAllStaff() {
+  const db = await openDatabase();
+  return dbRequest(db.transaction("staff").objectStore("staff").getAll());
+}
+
+async function exportAllData() {
+  const restaurants = await getAllRestaurants();
+  const staff = await getAllStaff();
+  const payload = {
+    app: "restaurant-crm",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    restaurants,
+    staff,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `restaurant-crm-backup-${todayDateString()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  alert(t("exportDone"));
+}
+
+async function importAllData(file) {
+  const text = await file.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("invalid json");
+  }
+  if (!data || !Array.isArray(data.restaurants) || !Array.isArray(data.staff)) {
+    throw new Error("invalid format");
+  }
+
+  const db = await openDatabase();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(["restaurants", "staff"], "readwrite");
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+    tx.oncomplete = () => resolve();
+    const restaurantStore = tx.objectStore("restaurants");
+    const staffStore = tx.objectStore("staff");
+    restaurantStore.clear();
+    staffStore.clear();
+    for (const r of data.restaurants) {
+      restaurantStore.add(normalizeRestaurant(r));
+    }
+    for (const s of data.staff) {
+      staffStore.add(s);
+    }
+  });
 }
 
 async function getStaffCount(restaurantId) {
@@ -850,14 +1106,14 @@ async function render() {
 }
 
 async function renderList() {
-  const restaurants = sortRestaurants(await getAllRestaurants(), listSort);
+  const allRestaurants = await getAllRestaurants();
+  const restaurants = sortRestaurants(allRestaurants, listSort);
   const query = listSearch.toLowerCase();
-  const filtered = restaurants.filter(
-    (r) =>
-      r.name.toLowerCase().includes(query) ||
-      (r.address || "").toLowerCase().includes(query) ||
-      (r.note || "").toLowerCase().includes(query)
-  );
+  let filtered = restaurants.filter((r) => restaurantMatchesSearch(r, query));
+  if (listTagFilter) {
+    filtered = filtered.filter((r) => (r.tags || []).includes(listTagFilter));
+  }
+  const usedTags = collectUsedTags(allRestaurants);
   const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
 
   app.innerHTML = `
@@ -877,12 +1133,29 @@ async function renderList() {
         </div>
       </div>
       ${
+        usedTags.length
+          ? `
+      <div class="tag-filter-row">
+        <span class="sort-label">${escapeHtml(t("filterByTag"))}</span>
+        <div class="tag-filter-scroll">
+          <button type="button" class="tag-filter-chip ${listTagFilter === "" ? "selected" : ""}" data-tag-filter="">${escapeHtml(t("allTags"))}</button>
+          ${usedTags
+            .map(
+              (tag) =>
+                `<button type="button" class="tag-filter-chip tag-style-${tagStyleClass(tag)} ${listTagFilter === tag ? "selected" : ""}" data-tag-filter="${escapeHtml(tag)}">${escapeHtml(tagLabel(tag))}</button>`
+            )
+            .join("")}
+        </div>
+      </div>`
+          : ""
+      }
+      ${
         filtered.length === 0
           ? `
         <div class="empty-state">
           <div class="icon">🍽️</div>
-          <h2>${restaurants.length === 0 ? escapeHtml(t("noRestaurants")) : escapeHtml(t("noMatches"))}</h2>
-          <p>${restaurants.length === 0 ? escapeHtml(t("tapToAdd")) : escapeHtml(t("trySearch"))}</p>
+          <h2>${allRestaurants.length === 0 ? escapeHtml(t("noRestaurants")) : escapeHtml(t("noMatches"))}</h2>
+          <p>${allRestaurants.length === 0 ? escapeHtml(t("tapToAdd")) : escapeHtml(t("trySearch"))}</p>
         </div>`
           : `
         <ul class="list">
@@ -895,6 +1168,7 @@ async function renderList() {
                   ${renderRestaurantThumb(r.image)}
                   <div class="info">
                     <div class="title">${escapeHtml(r.name)}</div>
+                    ${renderTagsHtml(r.tags, { compact: true })}
                     <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
                   </div>
                   <span class="chevron">›</span>
@@ -906,6 +1180,16 @@ async function renderList() {
         </ul>
         <p class="swipe-hint">${escapeHtml(t("swipeDeleteRestaurant"))}</p>`
       }
+
+      <div class="section data-section">
+        <div class="section-title">${escapeHtml(t("backup"))}</div>
+        <p class="data-hint">${escapeHtml(t("backupHint"))}</p>
+        <button class="btn btn-secondary full-width" id="export-btn" type="button">${escapeHtml(t("exportData"))}</button>
+        <label class="btn btn-secondary full-width import-label">
+          ${escapeHtml(t("importData"))}
+          <input type="file" id="import-input" accept=".json,application/json" hidden />
+        </label>
+      </div>
     </main>
   `;
 
@@ -920,6 +1204,32 @@ async function renderList() {
 
   app.querySelectorAll(".sort-chip").forEach((chip) => {
     chip.addEventListener("click", () => setListSort(chip.dataset.sort));
+  });
+
+  app.querySelectorAll(".tag-filter-chip").forEach((chip) => {
+    chip.addEventListener("click", () => setListTagFilter(chip.dataset.tagFilter));
+  });
+
+  app.querySelector("#export-btn")?.addEventListener("click", () => exportAllData());
+
+  const importInput = app.querySelector("#import-input");
+  importInput?.addEventListener("change", async () => {
+    const file = importInput.files?.[0];
+    importInput.value = "";
+    if (!file) return;
+    confirmDelete(t("importConfirmTitle"), t("importConfirmMsg"), async () => {
+      try {
+        await importAllData(file);
+        listSearch = "";
+        listTagFilter = "";
+        localStorage.removeItem(TAG_FILTER_KEY);
+        alert(t("importDone"));
+        await renderList();
+      } catch (err) {
+        alert(t("importFailed"));
+        console.error(err);
+      }
+    }, t("importConfirm"));
   });
 
   app.querySelectorAll(".list .swipe-row").forEach((row) => {
@@ -963,6 +1273,7 @@ async function renderDetail(id) {
       <div class="detail-hero">
         ${renderRestaurantThumb(restaurant.image, "detail-photo")}
         <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
+        ${renderTagsHtml(restaurant.tags)}
       </div>
 
       <div class="section">
@@ -1103,6 +1414,7 @@ async function renderRestaurantForm(editId) {
   let address = "";
   let note = "";
   let image = "";
+  let tags = [];
 
   if (editId) {
     const restaurant = await getRestaurant(editId);
@@ -1114,6 +1426,7 @@ async function renderRestaurantForm(editId) {
     address = restaurant.address;
     note = restaurant.note || "";
     image = restaurant.image || "";
+    tags = restaurant.tags || [];
   }
 
   app.innerHTML = `
@@ -1143,6 +1456,10 @@ async function renderRestaurantForm(editId) {
           <label for="note">${escapeHtml(t("note"))}</label>
           <textarea id="note" placeholder="${escapeHtml(t("restaurantNotePlaceholder"))}">${escapeHtml(note)}</textarea>
         </div>
+        <div class="field">
+          <label>${escapeHtml(t("tags"))}</label>
+          ${tagPickerMarkup(tags)}
+        </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" id="cancel-form">${escapeHtml(t("cancel"))}</button>
           <button type="submit" class="btn btn-primary" id="save-btn" disabled>${escapeHtml(t("save"))}</button>
@@ -1157,6 +1474,7 @@ async function renderRestaurantForm(editId) {
   const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
   const photoPicker = bindPhotoPicker({ initialImage: image });
+  const tagPicker = bindTagPicker({ initialTags: tags });
 
   function updateSave() {
     saveBtn.disabled = trim(nameInput.value) === "";
@@ -1178,6 +1496,7 @@ async function renderRestaurantForm(editId) {
         address: trim(addressInput.value),
         note: trim(noteInput.value),
         image: photoPicker.getImagePayload(image),
+        tags: tagPicker.getTags(),
       },
       editId
     );
@@ -1330,7 +1649,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
   });
 }
 
-function confirmDelete(title, message, onConfirm) {
+function confirmDelete(title, message, onConfirm, confirmLabel) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
@@ -1339,7 +1658,7 @@ function confirmDelete(title, message, onConfirm) {
       <p class="modal-text">${escapeHtml(message)}</p>
       <div class="modal-actions">
         <button class="btn btn-secondary modal-btn" id="modal-cancel" type="button">${escapeHtml(t("cancel"))}</button>
-        <button class="btn btn-delete modal-btn" id="modal-confirm" type="button">${escapeHtml(t("delete"))}</button>
+        <button class="btn btn-delete modal-btn" id="modal-confirm" type="button">${escapeHtml(confirmLabel || t("delete"))}</button>
       </div>
     </div>
   `;
