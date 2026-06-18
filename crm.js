@@ -1,12 +1,18 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v15";
+const APP_VERSION = "v16";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
 const SORT_KEY = "restaurant-crm-sort";
 const TAG_FILTER_KEY = "restaurant-crm-tag-filter";
+const LIST_MODE_KEY = "restaurant-crm-list-mode";
+const LAST_EXPORT_KEY = "restaurant-crm-last-export";
+const LAST_AUTO_EXPORT_KEY = "restaurant-crm-last-auto-export";
+const BACKUP_REMINDER_DISMISSED_KEY = "restaurant-crm-backup-dismissed";
+const AUTO_BACKUP_KEY = "restaurant-crm-auto-backup";
 const MAX_VISITS = 50;
+const BACKUP_REMINDER_DAYS = 30;
 
 const TAG_PRESETS = [
   { id: "good-wine", en: "Good wine list", sv: "Bra vinlista", style: "wine" },
@@ -116,6 +122,29 @@ const I18N = {
     exportDone: "Backup file downloaded. Save it to iCloud Drive in the Files app.",
     importDone: "Backup imported successfully.",
     importFailed: "Could not import that file. Check that it is a valid backup.",
+    pin: "Pin",
+    unpin: "Unpin",
+    pinned: "Pinned",
+    searchStaff: "Search staff…",
+    searchModeRestaurants: "Restaurants",
+    searchModeStaff: "Staff",
+    noStaffMatches: "No staff found",
+    staffAt: "at {name}",
+    backupReminderTitle: "Time for a backup?",
+    backupReminderMsg: "You have not exported a backup in over {n} days. Save one to iCloud Drive to protect your data.",
+    backupReminderExport: "Export now",
+    backupReminderLater: "Remind me later",
+    autoBackup: "Auto-backup",
+    autoBackupOff: "Off",
+    autoBackupWeekly: "Weekly",
+    autoBackupVisit: "After each visit",
+    autoBackupHint: "Weekly and visit modes download a backup file automatically. Save to iCloud Drive when prompted.",
+    autoBackupDone: "Automatic backup downloaded.",
+    link: "Website / Instagram",
+    linkPlaceholder: "https://… or instagram.com/…",
+    noLink: "No link",
+    openLink: "Open link",
+    clearTagFilters: "Clear filters",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -205,12 +234,66 @@ const I18N = {
     exportDone: "Säkerhetskopian har laddats ner. Spara den i iCloud Drive i appen Filer.",
     importDone: "Säkerhetskopian har importerats.",
     importFailed: "Kunde inte importera filen. Kontrollera att det är en giltig säkerhetskopia.",
+    pin: "Fäst",
+    unpin: "Ta bort fästning",
+    pinned: "Fäst",
+    searchStaff: "Sök personal…",
+    searchModeRestaurants: "Restauranger",
+    searchModeStaff: "Personal",
+    noStaffMatches: "Ingen personal hittades",
+    staffAt: "på {name}",
+    backupReminderTitle: "Dags att säkerhetskopiera?",
+    backupReminderMsg: "Du har inte exporterat en säkerhetskopia på över {n} dagar. Spara en i iCloud Drive för att skydda din data.",
+    backupReminderExport: "Exportera nu",
+    backupReminderLater: "Påminn mig senare",
+    autoBackup: "Automatisk säkerhetskopia",
+    autoBackupOff: "Av",
+    autoBackupWeekly: "Varje vecka",
+    autoBackupVisit: "Efter varje besök",
+    autoBackupHint: "Vecko- och besöksläge laddar ner en säkerhetskopia automatiskt. Spara i iCloud Drive när du uppmanas.",
+    autoBackupDone: "Automatisk säkerhetskopia har laddats ner.",
+    link: "Webbplats / Instagram",
+    linkPlaceholder: "https://… eller instagram.com/…",
+    noLink: "Ingen länk",
+    openLink: "Öppna länk",
+    clearTagFilters: "Rensa filter",
   },
 };
 
 let lang = localStorage.getItem(LANG_KEY) || "en";
 let listSort = localStorage.getItem(SORT_KEY) || "name";
-let listTagFilter = localStorage.getItem(TAG_FILTER_KEY) || "";
+let listMode = localStorage.getItem(LIST_MODE_KEY) || "restaurants";
+let listTagFilters = loadTagFilters();
+let listSearch = "";
+let weeklyAutoExportDoneThisSession = false;
+
+function loadTagFilters() {
+  try {
+    const raw = localStorage.getItem(TAG_FILTER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : raw ? [raw] : [];
+  } catch {
+    const legacy = localStorage.getItem(TAG_FILTER_KEY);
+    return legacy ? [legacy] : [];
+  }
+}
+
+function saveTagFilters() {
+  if (listTagFilters.length) {
+    localStorage.setItem(TAG_FILTER_KEY, JSON.stringify(listTagFilters));
+  } else {
+    localStorage.removeItem(TAG_FILTER_KEY);
+  }
+}
+
+function hapticLight() {
+  try {
+    if (navigator.vibrate) navigator.vibrate(12);
+  } catch {
+    /* unsupported */
+  }
+}
 
 function t(key, params = {}) {
   let text = I18N[lang]?.[key] ?? I18N.en[key] ?? key;
@@ -233,14 +316,34 @@ function setListSort(next) {
   renderList();
 }
 
-function setListTagFilter(next) {
-  listTagFilter = next;
-  if (listTagFilter) {
-    localStorage.setItem(TAG_FILTER_KEY, listTagFilter);
+function setListTagFilter(tag) {
+  if (!tag) {
+    listTagFilters = [];
   } else {
-    localStorage.removeItem(TAG_FILTER_KEY);
+    const idx = listTagFilters.indexOf(tag);
+    if (idx >= 0) listTagFilters.splice(idx, 1);
+    else listTagFilters.push(tag);
   }
+  saveTagFilters();
   renderList();
+}
+
+function clearListTagFilters() {
+  listTagFilters = [];
+  saveTagFilters();
+  renderList();
+}
+
+function setListMode(next) {
+  listMode = next;
+  localStorage.setItem(LIST_MODE_KEY, next);
+  renderList();
+}
+
+function restaurantMatchesTagFilters(r) {
+  if (!listTagFilters.length) return true;
+  const tags = r.tags || [];
+  return listTagFilters.every((tag) => tags.includes(tag));
 }
 
 function tagLabel(tag) {
@@ -372,6 +475,7 @@ function restaurantMatchesSearch(r, query) {
   if (r.name.toLowerCase().includes(q)) return true;
   if ((r.address || "").toLowerCase().includes(q)) return true;
   if ((r.note || "").toLowerCase().includes(q)) return true;
+  if ((r.link || "").toLowerCase().includes(q)) return true;
   if ((r.tags || []).some((tag) => tagLabel(tag).toLowerCase().includes(q))) return true;
   return false;
 }
@@ -488,7 +592,33 @@ function bindPhotoPicker({ initialImage }) {
   };
 }
 
-const ROLE_PRESETS = ["Manager", "GM", "Server", "Chef", "Bartender", "Host", "Sommelier", "Other"];
+const ROLE_PRESETS = [
+  { en: "Manager", sv: "Manager" },
+  { en: "GM", sv: "GM" },
+  { en: "Server", sv: "Servitör" },
+  { en: "Chef", sv: "Kock" },
+  { en: "Bartender", sv: "Bartender" },
+  { en: "Host", sv: "Värd" },
+  { en: "Sommelier", sv: "Sommelier" },
+  { en: "Other", sv: "Annat" },
+];
+
+function roleLabel(role) {
+  const preset = ROLE_PRESETS.find((p) => p.en === role);
+  if (preset) return lang === "sv" ? preset.sv : preset.en;
+  return role;
+}
+
+function rolePresetValues() {
+  return ROLE_PRESETS.map((p) => p.en);
+}
+
+function formatExternalUrl(url) {
+  const u = trim(url);
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  return `https://${u}`;
+}
 
 const DB_NAME = "restaurant-crm";
 const DB_VERSION = 1;
@@ -529,7 +659,9 @@ function normalizeRestaurant(r) {
     ...r,
     note: r.note || "",
     image: r.image || "",
+    link: r.link || "",
     tags: Array.isArray(r.tags) ? r.tags : [],
+    pinned: !!r.pinned,
     lastVisitedAt: r.lastVisitedAt || null,
     visits: Array.isArray(r.visits) ? r.visits : [],
   };
@@ -542,16 +674,21 @@ async function getAllRestaurants() {
 }
 
 function sortRestaurants(restaurants, sort) {
-  const copy = [...restaurants];
-  if (sort === "recent") {
-    return copy.sort((a, b) => {
-      const aTime = a.lastVisitedAt || 0;
-      const bTime = b.lastVisitedAt || 0;
-      if (bTime !== aTime) return bTime - aTime;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
-  }
-  return copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const sortGroup = (group) => {
+    const copy = [...group];
+    if (sort === "recent") {
+      return copy.sort((a, b) => {
+        const aTime = a.lastVisitedAt || 0;
+        const bTime = b.lastVisitedAt || 0;
+        if (bTime !== aTime) return bTime - aTime;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
+    }
+    return copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  };
+  const pinned = restaurants.filter((r) => r.pinned);
+  const unpinned = restaurants.filter((r) => !r.pinned);
+  return [...sortGroup(pinned), ...sortGroup(unpinned)];
 }
 
 async function getRestaurant(id) {
@@ -575,7 +712,9 @@ async function saveRestaurant(data, id) {
     address: data.address,
     note: data.note || "",
     image: data.image || "",
+    link: data.link || "",
     tags: data.tags || [],
+    pinned: !!data.pinned,
     createdAt: Date.now(),
     lastVisitedAt: null,
     visits: [],
@@ -584,10 +723,20 @@ async function saveRestaurant(data, id) {
   return restaurant;
 }
 
+async function toggleRestaurantPinned(id) {
+  const restaurant = await getRestaurant(id);
+  if (!restaurant) return;
+  await saveRestaurant({ pinned: !restaurant.pinned }, id);
+  hapticLight();
+}
+
 async function logVisit(id) {
   const restaurant = await getRestaurant(id);
   if (!restaurant) return null;
-  return saveVisits(id, [...restaurant.visits, Date.now()]);
+  const updated = await saveVisits(id, [...restaurant.visits, Date.now()]);
+  hapticLight();
+  await maybeAutoExport("visit");
+  return updated;
 }
 
 function computeLastVisitedAt(visits) {
@@ -634,7 +783,9 @@ async function addVisitOnDate(id, dateStr) {
   if (parsed.error) return { error: parsed.error };
   const restaurant = await getRestaurant(id);
   if (!restaurant) return { error: "notfound" };
-  return { restaurant: await saveVisits(id, [...restaurant.visits, parsed.ts]) };
+  const updated = await saveVisits(id, [...restaurant.visits, parsed.ts]);
+  await maybeAutoExport("visit");
+  return { restaurant: updated };
 }
 
 async function deleteRestaurant(id) {
@@ -667,7 +818,7 @@ async function getAllStaff() {
   return dbRequest(db.transaction("staff").objectStore("staff").getAll());
 }
 
-async function exportAllData() {
+async function exportAllData({ silent = false, auto = false } = {}) {
   const restaurants = await getAllRestaurants();
   const staff = await getAllStaff();
   const payload = {
@@ -686,7 +837,101 @@ async function exportAllData() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  alert(t("exportDone"));
+  const now = Date.now();
+  localStorage.setItem(LAST_EXPORT_KEY, String(now));
+  if (auto) localStorage.setItem(LAST_AUTO_EXPORT_KEY, String(now));
+  if (silent) {
+    if (auto) alert(t("autoBackupDone"));
+  } else {
+    alert(t("exportDone"));
+  }
+}
+
+async function maybeAutoExport(trigger) {
+  const mode = localStorage.getItem(AUTO_BACKUP_KEY) || "off";
+  if (trigger === "visit" && mode === "visit") {
+    await exportAllData({ silent: true, auto: true });
+  }
+}
+
+async function checkWeeklyAutoBackup() {
+  const mode = localStorage.getItem(AUTO_BACKUP_KEY) || "off";
+  if (mode !== "weekly" || weeklyAutoExportDoneThisSession) return;
+  const last = parseInt(localStorage.getItem(LAST_AUTO_EXPORT_KEY) || "0", 10);
+  if (Date.now() - last < 7 * 86400000) return;
+  weeklyAutoExportDoneThisSession = true;
+  await exportAllData({ silent: true, auto: true });
+}
+
+function shouldShowBackupReminder() {
+  const dismissed = parseInt(localStorage.getItem(BACKUP_REMINDER_DISMISSED_KEY) || "0", 10);
+  if (Date.now() - dismissed < 7 * 86400000) return false;
+  const lastExport = parseInt(localStorage.getItem(LAST_EXPORT_KEY) || "0", 10);
+  const threshold = BACKUP_REMINDER_DAYS * 86400000;
+  if (lastExport) return Date.now() - lastExport >= threshold;
+  const firstUse = parseInt(localStorage.getItem("restaurant-crm-first-use") || "0", 10);
+  if (!firstUse) {
+    localStorage.setItem("restaurant-crm-first-use", String(Date.now()));
+    return false;
+  }
+  return Date.now() - firstUse >= threshold;
+}
+
+function showBackupReminder() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>${escapeHtml(t("backupReminderTitle"))}</h2>
+      <p class="modal-text">${escapeHtml(t("backupReminderMsg", { n: BACKUP_REMINDER_DAYS }))}</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary modal-btn" id="reminder-later" type="button">${escapeHtml(t("backupReminderLater"))}</button>
+        <button class="btn btn-primary modal-btn" id="reminder-export" type="button">${escapeHtml(t("backupReminderExport"))}</button>
+      </div>
+    </div>
+  `;
+  const modal = overlay.querySelector(".modal");
+  const close = () => {
+    overlay.remove();
+    document.body.style.overflow = "";
+  };
+  document.body.style.overflow = "hidden";
+  document.body.appendChild(overlay);
+  modal.addEventListener("click", (e) => e.stopPropagation());
+  overlay.querySelector("#reminder-later").addEventListener("click", () => {
+    localStorage.setItem(BACKUP_REMINDER_DISMISSED_KEY, String(Date.now()));
+    close();
+  });
+  overlay.querySelector("#reminder-export").addEventListener("click", async () => {
+    localStorage.setItem(BACKUP_REMINDER_DISMISSED_KEY, String(Date.now()));
+    await exportAllData();
+    close();
+  });
+}
+
+function setAutoBackup(mode) {
+  localStorage.setItem(AUTO_BACKUP_KEY, mode);
+  renderList();
+}
+
+async function searchStaffGlobally(query) {
+  const q = query.toLowerCase();
+  if (!q) return [];
+  const [staff, restaurants] = await Promise.all([getAllStaff(), getAllRestaurants()]);
+  const byId = Object.fromEntries(restaurants.map((r) => [r.id, r]));
+  return staff
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.role || "").toLowerCase().includes(q) ||
+        roleLabel(s.role).toLowerCase().includes(q) ||
+        (s.note || "").toLowerCase().includes(q) ||
+        (s.phone || "").toLowerCase().includes(q) ||
+        (s.email || "").toLowerCase().includes(q)
+    )
+    .map((s) => ({ ...s, restaurant: byId[s.restaurantId] }))
+    .filter((s) => s.restaurant)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
 async function importAllData(file) {
@@ -757,7 +1002,6 @@ async function deleteStaff(id) {
 }
 
 let route = { view: "list" };
-let listSearch = "";
 const app = document.getElementById("app");
 
 function navigate(next) {
@@ -966,7 +1210,7 @@ function renderStaffCard(s) {
       <div class="contact-body">
         <div class="contact-header">
           <span class="contact-name">${escapeHtml(s.name)}</span>
-          <span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(s.role)}</span>
+          <span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span>
           ${
             phone
               ? `<a class="call-btn" href="tel:${formatPhoneLink(phone)}" aria-label="${escapeHtml(t("call"))}" title="${escapeHtml(t("call"))}">📞</a>`
@@ -1016,6 +1260,7 @@ function bindSwipeRow(row, { onTap, onDelete }) {
   deleteBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     closeAllSwipes();
+    hapticLight();
     onDelete();
   });
 
@@ -1069,7 +1314,7 @@ function bindSwipeRow(row, { onTap, onDelete }) {
       closeAllSwipes();
       return;
     }
-    if (e.target.closest("a, .edit-staff-btn, .contact-link, .call-btn")) return;
+    if (e.target.closest("a, .edit-staff-btn, .contact-link, .call-btn, .pin-btn, .staff-search-card")) return;
     if (onTap) onTap(e);
   });
 }
@@ -1106,71 +1351,91 @@ async function render() {
 }
 
 async function renderList() {
-  const allRestaurants = await getAllRestaurants();
-  const restaurants = sortRestaurants(allRestaurants, listSort);
-  const query = listSearch.toLowerCase();
-  let filtered = restaurants.filter((r) => restaurantMatchesSearch(r, query));
-  if (listTagFilter) {
-    filtered = filtered.filter((r) => (r.tags || []).includes(listTagFilter));
-  }
-  const usedTags = collectUsedTags(allRestaurants);
-  const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
+  await checkWeeklyAutoBackup();
 
-  app.innerHTML = `
-    <header class="header">
-      <h1>${APP_NAME} ${headerMeta()}</h1>
-      <button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>
-    </header>
-    <main class="content">
-      <div class="search-box">
-        <input id="search-input" type="search" placeholder="${escapeHtml(t("searchPlaceholder"))}" value="${escapeHtml(listSearch)}" />
-      </div>
-      <div class="sort-row">
-        <span class="sort-label">${escapeHtml(t("sortLabel"))}</span>
-        <div class="sort-options">
-          <button type="button" class="sort-chip ${listSort === "name" ? "selected" : ""}" data-sort="name">${escapeHtml(t("sortName"))}</button>
-          <button type="button" class="sort-chip ${listSort === "recent" ? "selected" : ""}" data-sort="recent">${escapeHtml(t("sortRecent"))}</button>
-        </div>
-      </div>
-      ${
-        usedTags.length
-          ? `
+  const allRestaurants = await getAllRestaurants();
+  const autoBackupMode = localStorage.getItem(AUTO_BACKUP_KEY) || "off";
+  const isStaffMode = listMode === "staff";
+  const query = listSearch.toLowerCase();
+
+  let listBodyHtml = "";
+  if (isStaffMode) {
+    const staffResults = await searchStaffGlobally(listSearch);
+    listBodyHtml =
+      staffResults.length === 0
+        ? `
+        <div class="empty-state">
+          <div class="icon">👤</div>
+          <h2>${escapeHtml(t("noStaffMatches"))}</h2>
+          <p>${escapeHtml(t("trySearch"))}</p>
+        </div>`
+        : `
+        <ul class="list staff-search-list">
+          ${staffResults
+            .map(
+              (s) => `
+            <li>
+              <button type="button" class="staff-search-card" data-restaurant-id="${s.restaurantId}">
+                ${renderStaffAvatar(s)}
+                <div class="info">
+                  <div class="title">${escapeHtml(s.name)}</div>
+                  <div class="subtitle">${escapeHtml(roleLabel(s.role))} · ${escapeHtml(t("staffAt", { name: s.restaurant.name }))}</div>
+                </div>
+                <span class="chevron">›</span>
+              </button>
+            </li>`
+            )
+            .join("")}
+        </ul>`;
+  } else {
+    const restaurants = sortRestaurants(allRestaurants, listSort);
+    let filtered = restaurants.filter((r) => restaurantMatchesSearch(r, query));
+    filtered = filtered.filter((r) => restaurantMatchesTagFilters(r));
+    const usedTags = collectUsedTags(allRestaurants);
+    const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
+
+    const tagFilterHtml = usedTags.length
+      ? `
       <div class="tag-filter-row">
-        <span class="sort-label">${escapeHtml(t("filterByTag"))}</span>
+        <div class="tag-filter-header">
+          <span class="sort-label">${escapeHtml(t("filterByTag"))}</span>
+          ${listTagFilters.length ? `<button type="button" class="btn-text tag-clear-btn" id="clear-tag-filters">${escapeHtml(t("clearTagFilters"))}</button>` : ""}
+        </div>
         <div class="tag-filter-scroll">
-          <button type="button" class="tag-filter-chip ${listTagFilter === "" ? "selected" : ""}" data-tag-filter="">${escapeHtml(t("allTags"))}</button>
           ${usedTags
             .map(
               (tag) =>
-                `<button type="button" class="tag-filter-chip tag-style-${tagStyleClass(tag)} ${listTagFilter === tag ? "selected" : ""}" data-tag-filter="${escapeHtml(tag)}">${escapeHtml(tagLabel(tag))}</button>`
+                `<button type="button" class="tag-filter-chip tag-style-${tagStyleClass(tag)} ${listTagFilters.includes(tag) ? "selected" : ""}" data-tag-filter="${escapeHtml(tag)}">${escapeHtml(tagLabel(tag))}</button>`
             )
             .join("")}
         </div>
       </div>`
-          : ""
-      }
-      ${
-        filtered.length === 0
-          ? `
+      : "";
+
+    listBodyHtml =
+      filtered.length === 0
+        ? `
         <div class="empty-state">
           <div class="icon">🍽️</div>
           <h2>${allRestaurants.length === 0 ? escapeHtml(t("noRestaurants")) : escapeHtml(t("noMatches"))}</h2>
           <p>${allRestaurants.length === 0 ? escapeHtml(t("tapToAdd")) : escapeHtml(t("trySearch"))}</p>
         </div>`
-          : `
+        : `
+        ${tagFilterHtml}
         <ul class="list">
           ${filtered
             .map(
               (r, i) => `
             <li>
               ${wrapSwipeRow(`
-                <div class="restaurant-card" data-id="${r.id}">
+                <div class="restaurant-card ${r.pinned ? "is-pinned" : ""}" data-id="${r.id}">
                   ${renderRestaurantThumb(r.image)}
                   <div class="info">
-                    <div class="title">${escapeHtml(r.name)}</div>
+                    <div class="title">${r.pinned ? '<span class="pin-indicator">★</span> ' : ""}${escapeHtml(r.name)}</div>
                     ${renderTagsHtml(r.tags, { compact: true })}
                     <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
                   </div>
+                  <button type="button" class="pin-btn ${r.pinned ? "pinned" : ""}" data-pin-id="${r.id}" aria-label="${escapeHtml(r.pinned ? t("unpin") : t("pin"))}">★</button>
                   <span class="chevron">›</span>
                 </div>
               `)}
@@ -1178,8 +1443,35 @@ async function renderList() {
             )
             .join("")}
         </ul>
-        <p class="swipe-hint">${escapeHtml(t("swipeDeleteRestaurant"))}</p>`
+        <p class="swipe-hint">${escapeHtml(t("swipeDeleteRestaurant"))}</p>`;
+  }
+
+  app.innerHTML = `
+    <header class="header">
+      <h1>${APP_NAME} ${headerMeta()}</h1>
+      <button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>
+    </header>
+    <main class="content">
+      <div class="search-mode-row">
+        <button type="button" class="search-mode-chip ${listMode === "restaurants" ? "selected" : ""}" data-list-mode="restaurants">${escapeHtml(t("searchModeRestaurants"))}</button>
+        <button type="button" class="search-mode-chip ${listMode === "staff" ? "selected" : ""}" data-list-mode="staff">${escapeHtml(t("searchModeStaff"))}</button>
+      </div>
+      <div class="search-box">
+        <input id="search-input" type="search" placeholder="${escapeHtml(isStaffMode ? t("searchStaff") : t("searchPlaceholder"))}" value="${escapeHtml(listSearch)}" />
+      </div>
+      ${
+        !isStaffMode
+          ? `
+      <div class="sort-row">
+        <span class="sort-label">${escapeHtml(t("sortLabel"))}</span>
+        <div class="sort-options">
+          <button type="button" class="sort-chip ${listSort === "name" ? "selected" : ""}" data-sort="name">${escapeHtml(t("sortName"))}</button>
+          <button type="button" class="sort-chip ${listSort === "recent" ? "selected" : ""}" data-sort="recent">${escapeHtml(t("sortRecent"))}</button>
+        </div>
+      </div>`
+          : ""
       }
+      ${listBodyHtml}
 
       <div class="section data-section">
         <div class="section-title">${escapeHtml(t("backup"))}</div>
@@ -1189,6 +1481,15 @@ async function renderList() {
           ${escapeHtml(t("importData"))}
           <input type="file" id="import-input" accept=".json,application/json" hidden />
         </label>
+        <div class="auto-backup-block">
+          <span class="sort-label">${escapeHtml(t("autoBackup"))}</span>
+          <div class="sort-options auto-backup-options">
+            <button type="button" class="sort-chip ${autoBackupMode === "off" ? "selected" : ""}" data-auto-backup="off">${escapeHtml(t("autoBackupOff"))}</button>
+            <button type="button" class="sort-chip ${autoBackupMode === "weekly" ? "selected" : ""}" data-auto-backup="weekly">${escapeHtml(t("autoBackupWeekly"))}</button>
+            <button type="button" class="sort-chip ${autoBackupMode === "visit" ? "selected" : ""}" data-auto-backup="visit">${escapeHtml(t("autoBackupVisit"))}</button>
+          </div>
+          <p class="data-hint auto-backup-hint">${escapeHtml(t("autoBackupHint"))}</p>
+        </div>
       </div>
     </main>
   `;
@@ -1202,12 +1503,34 @@ async function renderList() {
     renderList();
   });
 
-  app.querySelectorAll(".sort-chip").forEach((chip) => {
+  app.querySelectorAll(".search-mode-chip").forEach((chip) => {
+    chip.addEventListener("click", () => setListMode(chip.dataset.listMode));
+  });
+
+  app.querySelectorAll(".sort-chip[data-sort]").forEach((chip) => {
     chip.addEventListener("click", () => setListSort(chip.dataset.sort));
   });
 
   app.querySelectorAll(".tag-filter-chip").forEach((chip) => {
     chip.addEventListener("click", () => setListTagFilter(chip.dataset.tagFilter));
+  });
+
+  app.querySelector("#clear-tag-filters")?.addEventListener("click", clearListTagFilters);
+
+  app.querySelectorAll(".pin-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await toggleRestaurantPinned(btn.dataset.pinId);
+      await renderList();
+    });
+  });
+
+  app.querySelectorAll(".staff-search-card").forEach((card) => {
+    card.addEventListener("click", () => navigate({ view: "detail", id: card.dataset.restaurantId }));
+  });
+
+  app.querySelectorAll("[data-auto-backup]").forEach((chip) => {
+    chip.addEventListener("click", () => setAutoBackup(chip.dataset.autoBackup));
   });
 
   app.querySelector("#export-btn")?.addEventListener("click", () => exportAllData());
@@ -1221,7 +1544,7 @@ async function renderList() {
       try {
         await importAllData(file);
         listSearch = "";
-        listTagFilter = "";
+        listTagFilters = [];
         localStorage.removeItem(TAG_FILTER_KEY);
         alert(t("importDone"));
         await renderList();
@@ -1232,26 +1555,32 @@ async function renderList() {
     }, t("importConfirm"));
   });
 
-  app.querySelectorAll(".list .swipe-row").forEach((row) => {
-    const card = row.querySelector(".restaurant-card");
-    if (!card) return;
-    const id = card.dataset.id;
-    bindSwipeRow(row, {
-      onTap: () => navigate({ view: "detail", id }),
-      onDelete: async () => {
-        const restaurant = await getRestaurant(id);
-        if (!restaurant) return;
-        confirmDelete(
-          t("deleteRestaurantTitle", { name: restaurant.name }),
-          t("deleteRestaurantMsg"),
-          async () => {
-            await deleteRestaurant(restaurant.id);
-            await renderList();
-          }
-        );
-      },
+  if (!isStaffMode) {
+    app.querySelectorAll(".list .swipe-row").forEach((row) => {
+      const card = row.querySelector(".restaurant-card");
+      if (!card) return;
+      const id = card.dataset.id;
+      bindSwipeRow(row, {
+        onTap: () => navigate({ view: "detail", id }),
+        onDelete: async () => {
+          const restaurant = await getRestaurant(id);
+          if (!restaurant) return;
+          confirmDelete(
+            t("deleteRestaurantTitle", { name: restaurant.name }),
+            t("deleteRestaurantMsg"),
+            async () => {
+              await deleteRestaurant(restaurant.id);
+              await renderList();
+            }
+          );
+        },
+      });
     });
-  });
+  }
+
+  if (shouldShowBackupReminder()) {
+    showBackupReminder();
+  }
 }
 
 async function renderDetail(id) {
@@ -1274,6 +1603,9 @@ async function renderDetail(id) {
         ${renderRestaurantThumb(restaurant.image, "detail-photo")}
         <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
         ${renderTagsHtml(restaurant.tags)}
+        <button type="button" class="pin-btn pin-btn-large ${restaurant.pinned ? "pinned" : ""}" id="toggle-pin-btn" aria-label="${escapeHtml(restaurant.pinned ? t("unpin") : t("pin"))}">
+          ★ ${escapeHtml(restaurant.pinned ? t("pinned") : t("pin"))}
+        </button>
       </div>
 
       <div class="section">
@@ -1304,6 +1636,19 @@ async function renderDetail(id) {
           <div class="card-row">
             <span class="label">${escapeHtml(t("note"))}</span>
             <span class="value muted">${escapeHtml(t("noNote"))}</span>
+          </div>`
+          }
+          ${
+            restaurant.link
+              ? `
+          <a class="link-row" href="${escapeHtml(formatExternalUrl(restaurant.link))}" target="_blank" rel="noopener noreferrer">
+            <span class="label">${escapeHtml(t("link"))}</span>
+            <span class="link-value">${escapeHtml(restaurant.link)}</span>
+          </a>`
+              : `
+          <div class="card-row">
+            <span class="label">${escapeHtml(t("link"))}</span>
+            <span class="value muted">${escapeHtml(t("noLink"))}</span>
           </div>`
           }
         </div>
@@ -1355,6 +1700,10 @@ async function renderDetail(id) {
 
   bindLangSelect();
   app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
+  app.querySelector("#toggle-pin-btn")?.addEventListener("click", async () => {
+    await toggleRestaurantPinned(id);
+    await renderDetail(id);
+  });
   app.querySelector("#edit-restaurant-btn").addEventListener("click", () => navigate({ view: "edit-restaurant", id }));
   app.querySelector("#add-staff-btn").addEventListener("click", () => navigate({ view: "add-staff", restaurantId: id }));
   app.querySelector("#log-visit-btn").addEventListener("click", async () => {
@@ -1414,6 +1763,7 @@ async function renderRestaurantForm(editId) {
   let address = "";
   let note = "";
   let image = "";
+  let link = "";
   let tags = [];
 
   if (editId) {
@@ -1426,6 +1776,7 @@ async function renderRestaurantForm(editId) {
     address = restaurant.address;
     note = restaurant.note || "";
     image = restaurant.image || "";
+    link = restaurant.link || "";
     tags = restaurant.tags || [];
   }
 
@@ -1453,6 +1804,10 @@ async function renderRestaurantForm(editId) {
           <textarea id="address" placeholder="${escapeHtml(t("streetCity"))}">${escapeHtml(address)}</textarea>
         </div>
         <div class="field">
+          <label for="link">${escapeHtml(t("link"))}</label>
+          <input id="link" type="url" inputmode="url" value="${escapeHtml(link)}" placeholder="${escapeHtml(t("linkPlaceholder"))}" />
+        </div>
+        <div class="field">
           <label for="note">${escapeHtml(t("note"))}</label>
           <textarea id="note" placeholder="${escapeHtml(t("restaurantNotePlaceholder"))}">${escapeHtml(note)}</textarea>
         </div>
@@ -1471,6 +1826,7 @@ async function renderRestaurantForm(editId) {
   bindLangSelect();
   const nameInput = app.querySelector("#name");
   const addressInput = app.querySelector("#address");
+  const linkInput = app.querySelector("#link");
   const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
   const photoPicker = bindPhotoPicker({ initialImage: image });
@@ -1494,6 +1850,7 @@ async function renderRestaurantForm(editId) {
       {
         name: trim(nameInput.value),
         address: trim(addressInput.value),
+        link: trim(linkInput.value),
         note: trim(noteInput.value),
         image: photoPicker.getImagePayload(image),
         tags: tagPicker.getTags(),
@@ -1562,7 +1919,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
           <div class="role-presets" id="role-presets">
             ${ROLE_PRESETS.map(
               (preset) =>
-                `<button type="button" class="preset-chip" data-role="${preset}">${preset}</button>`
+                `<button type="button" class="preset-chip" data-role="${preset.en}">${escapeHtml(lang === "sv" ? preset.sv : preset.en)}</button>`
             ).join("")}
           </div>
           <input id="role" type="text" value="${escapeHtml(role)}" placeholder="${escapeHtml(t("customRole"))}" required />
@@ -1590,11 +1947,12 @@ async function renderStaffForm(restaurantId, editStaffId) {
 
   function updatePresetHighlight() {
     const current = trim(roleInput.value);
+    const presetValues = rolePresetValues();
     app.querySelectorAll(".preset-chip").forEach((chip) => {
       const preset = chip.dataset.role;
       const isMatch =
         preset === "Other"
-          ? current !== "" && !ROLE_PRESETS.slice(0, -1).includes(current)
+          ? current !== "" && !presetValues.slice(0, -1).includes(current)
           : current === preset;
       chip.classList.toggle("selected", isMatch);
     });
