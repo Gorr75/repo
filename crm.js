@@ -1,6 +1,7 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
+const GEOCODE_CACHE_VERSION = "v2";
 const STAFF_SORT_KEY = "restaurant-crm-staff-sort";
 const STAFF_ROLE_FILTER_KEY = "restaurant-crm-staff-role-filter";
 const APP_NAME = "Restaurant CRM";
@@ -99,7 +100,7 @@ const I18N = {
     name: "Name",
     restaurantName: "Restaurant name",
     restaurantNotePlaceholder: "Table preferences, opening hours, etc.",
-    streetCity: "Street, city",
+    streetCity: "Stureplan 2, Stockholm",
     fullName: "Full name",
     phone: "Phone",
     email: "Email",
@@ -231,7 +232,7 @@ const I18N = {
     name: "Namn",
     restaurantName: "Restaurangnamn",
     restaurantNotePlaceholder: "Bordsönskemål, öppettider, m.m.",
-    streetCity: "Gata, stad",
+    streetCity: "Stureplan 2, Stockholm",
     fullName: "Fullständigt namn",
     phone: "Telefon",
     email: "E-post",
@@ -745,6 +746,7 @@ function normalizeRestaurant(r) {
     lat: r.lat ?? null,
     lng: r.lng ?? null,
     geocodeQuery: r.geocodeQuery || "",
+    geocodeLabel: r.geocodeLabel || "",
     lastVisitedAt: r.lastVisitedAt || null,
     visits: Array.isArray(r.visits) ? r.visits : [],
   };
@@ -1167,6 +1169,140 @@ function destinationQuery(restaurant) {
   return restaurant.name;
 }
 
+function normalizeAddressForGeocode(address) {
+  const raw = trim(address || "");
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  if (lower.includes("sverige") || lower.includes("sweden")) return raw;
+  return `${raw}, Sverige`;
+}
+
+function mapGeocodeCacheKey(restaurant) {
+  const address = normalizeAddressForGeocode(restaurant.address);
+  if (!address) return "";
+  return `${GEOCODE_CACHE_VERSION}|${address}`;
+}
+
+function scoreGeocodeResult(result, query) {
+  let score = parseFloat(result.importance || 0);
+  const type = result.type || "";
+  const category = result.class || "";
+  const display = (result.display_name || "").toLowerCase();
+  const q = query.toLowerCase();
+
+  if (type === "house" || type === "building" || type === "restaurant" || type === "cafe" || type === "food") {
+    score += 0.8;
+  } else if (type === "amenity" || category === "amenity") {
+    score += 0.6;
+  } else if (type === "road" || type === "pedestrian") {
+    score += 0.35;
+  } else if (type === "suburb" || type === "neighbourhood" || type === "quarter" || type === "city_district") {
+    score -= 0.55;
+  } else if (type === "administrative") {
+    score -= 0.35;
+  }
+
+  const queryParts = q.split(/[,\s]+/).filter((p) => p.length > 2);
+  const matchedParts = queryParts.filter((part) => display.includes(part)).length;
+  score += matchedParts * 0.12;
+
+  if (display.includes("stockholm") && q.includes("stockholm")) score += 0.25;
+  if (display.includes("sverige") || display.includes("sweden")) score += 0.1;
+
+  return score;
+}
+
+function pickBestGeocodeResult(results, query) {
+  if (!results?.length) return null;
+  const ranked = results
+    .map((result) => ({ result, score: scoreGeocodeResult(result, query) }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0].result;
+  return {
+    lat: parseFloat(best.lat),
+    lng: parseFloat(best.lon),
+    label: best.display_name || "",
+  };
+}
+
+async function geocodeWithNominatim(query) {
+  const params = new URLSearchParams({
+    format: "json",
+    limit: "8",
+    addressdetails: "1",
+    countrycodes: "se",
+    q: query,
+  });
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "RestaurantCRM-PWA/1.0",
+    },
+  });
+  if (!response.ok) return null;
+  const results = await response.json();
+  return pickBestGeocodeResult(results, query);
+}
+
+async function geocodeWithPhoton(query) {
+  const params = new URLSearchParams({
+    q: query,
+    limit: "8",
+    lat: String(DEFAULT_MAP_CENTER[0]),
+    lon: String(DEFAULT_MAP_CENTER[1]),
+  });
+  const response = await fetch(`https://photon.komoot.io/api/?${params}`);
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!data.features?.length) return null;
+
+  const nominatimLike = data.features.map((feature) => {
+    const props = feature.properties || {};
+    const parts = [props.name, props.street, props.housenumber, props.city, props.country].filter(Boolean);
+    return {
+      lat: feature.geometry.coordinates[1],
+      lon: feature.geometry.coordinates[0],
+      importance: props.importance || 0.4,
+      type: props.type || props.osm_value || "",
+      class: props.osm_key || "",
+      display_name: parts.join(", "),
+    };
+  });
+  return pickBestGeocodeResult(nominatimLike, query);
+}
+
+async function geocodeAddress(query) {
+  const normalized = trim(query);
+  if (!normalized) return null;
+
+  try {
+    const coords = await geocodeWithNominatim(normalized);
+    if (coords) return coords;
+  } catch (err) {
+    console.warn("Nominatim geocoding failed", err);
+  }
+
+  try {
+    const coords = await geocodeWithPhoton(normalized);
+    if (coords) return coords;
+  } catch (err) {
+    console.warn("Photon geocoding failed", err);
+  }
+
+  return null;
+}
+
+async function geocodeRestaurant(restaurant) {
+  const addressQuery = normalizeAddressForGeocode(restaurant.address);
+  if (!addressQuery) return null;
+
+  let coords = await geocodeAddress(addressQuery);
+  if (!coords && restaurant.name) {
+    coords = await geocodeAddress(`${restaurant.name}, ${addressQuery}`);
+  }
+  return coords;
+}
+
 function appleMapsUrl(destination) {
   return `https://maps.apple.com/?daddr=${encodeURIComponent(destination)}`;
 }
@@ -1179,40 +1315,6 @@ function uberUrl(destination, nickname, coords) {
     url += `&dropoff[latitude]=${coords.lat}&dropoff[longitude]=${coords.lng}`;
   }
   return url;
-}
-
-async function geocodeAddress(query) {
-  try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
-      { headers: { Accept: "application/json" } }
-    );
-    if (response.ok) {
-      const results = await response.json();
-      if (results.length) {
-        return { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
-      }
-    }
-  } catch (err) {
-    console.warn("Nominatim geocoding failed", err);
-  }
-
-  try {
-    const response = await fetch(
-      `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`
-    );
-    if (response.ok) {
-      const data = await response.json();
-      if (data.features && data.features.length) {
-        const [lng, lat] = data.features[0].geometry.coordinates;
-        return { lat, lng };
-      }
-    }
-  } catch (err) {
-    console.warn("Photon geocoding failed", err);
-  }
-
-  return null;
 }
 
 function openNavigation(url) {
@@ -1521,15 +1623,18 @@ function sleep(ms) {
 }
 
 async function ensureRestaurantCoords(restaurant) {
-  const query = destinationQuery(restaurant);
-  if (!trim(query)) return restaurant;
-  if (restaurant.lat != null && restaurant.lng != null && restaurant.geocodeQuery === query) {
+  const cacheKey = mapGeocodeCacheKey(restaurant);
+  if (!cacheKey) return restaurant;
+  if (restaurant.lat != null && restaurant.lng != null && restaurant.geocodeQuery === cacheKey) {
     return restaurant;
   }
   try {
-    const coords = await geocodeAddress(query);
+    const coords = await geocodeRestaurant(restaurant);
     if (!coords) return restaurant;
-    return saveRestaurant({ lat: coords.lat, lng: coords.lng, geocodeQuery: query }, restaurant.id);
+    return saveRestaurant(
+      { lat: coords.lat, lng: coords.lng, geocodeQuery: cacheKey, geocodeLabel: coords.label || "" },
+      restaurant.id
+    );
   } catch {
     return restaurant;
   }
@@ -1590,7 +1695,7 @@ async function initRestaurantMap(restaurants) {
 
   const loadingEl = document.getElementById("map-loading");
   const emptyEl = document.getElementById("map-empty");
-  const withQuery = restaurants.filter((r) => trim(destinationQuery(r)));
+  const withQuery = restaurants.filter((r) => trim(r.address));
   const markers = [];
 
   if (!withQuery.length) {
@@ -1614,6 +1719,8 @@ async function initRestaurantMap(restaurants) {
       popup.className = "map-callout";
       popup.innerHTML = `
         <div class="map-callout-name">${escapeHtml(r.name)}</div>
+        ${r.address ? `<div class="map-callout-address">${escapeHtml(r.address)}</div>` : ""}
+        ${r.geocodeLabel && r.geocodeLabel !== r.address ? `<div class="map-callout-geocode">${escapeHtml(r.geocodeLabel)}</div>` : ""}
         <div class="map-callout-visit">${escapeHtml(t("lastVisit"))}: ${escapeHtml(formatRelativeVisit(r.lastVisitedAt))}</div>
         <div class="map-callout-status"><span class="map-legend-dot" style="background:${statusColor(status)}"></span> ${escapeHtml(statusLabel(status))}</div>
         <button type="button" class="btn btn-primary full-width map-details-btn">${escapeHtml(t("viewDetails"))}</button>
@@ -2290,6 +2397,7 @@ async function renderRestaurantForm(editId) {
         payload.lat = null;
         payload.lng = null;
         payload.geocodeQuery = "";
+        payload.geocodeLabel = "";
       }
     }
     const saved = await saveRestaurant(payload, editId);
