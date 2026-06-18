@@ -1,12 +1,12 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v17";
+const APP_VERSION = "v18";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
 const SORT_KEY = "restaurant-crm-sort";
 const TAG_FILTER_KEY = "restaurant-crm-tag-filter";
-const LIST_MODE_KEY = "restaurant-crm-list-mode";
+const HOME_TAB_KEY = "restaurant-crm-home-tab";
 const LAST_EXPORT_KEY = "restaurant-crm-last-export";
 const LAST_AUTO_EXPORT_KEY = "restaurant-crm-last-auto-export";
 const BACKUP_REMINDER_DISMISSED_KEY = "restaurant-crm-backup-dismissed";
@@ -32,6 +32,16 @@ const TAG_PRESETS = [
   { id: "special-occasion", en: "Special occasion", sv: "Speciellt tillfälle", style: "default" },
   { id: "family-friendly", en: "Family friendly", sv: "Barnvänligt", style: "default" },
 ];
+
+const STATUS_PRESETS = [
+  { id: "favorite", en: "Favorite", sv: "Favorit", color: "#ff453a" },
+  { id: "want-to-try", en: "Want to try", sv: "Vill prova", color: "#ffd60a" },
+  { id: "regular", en: "Regular", sv: "Vanlig", color: "#0a84ff" },
+  { id: "avoid", en: "Avoid", sv: "Undvik", color: "#8e8e93" },
+];
+
+const DEFAULT_MAP_CENTER = [59.3293, 18.0686];
+const DEFAULT_MAP_ZOOM = 11;
 
 const I18N = {
   en: {
@@ -149,6 +159,15 @@ const I18N = {
     language: "Language",
     langEnglish: "English",
     langSwedish: "Svenska",
+    tabMap: "Map",
+    mapLoading: "Placing restaurants on the map…",
+    mapNoAddress: "Add an address to show a restaurant on the map.",
+    mapNoLocations: "No restaurants with addresses could be located.",
+    mapLegend: "Map colors",
+    viewDetails: "View Details",
+    status: "Status",
+    openInAppleMaps: "Open in Apple Maps",
+    mapHint: "Tap a pin for details. Pins are colored by restaurant status.",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -265,12 +284,22 @@ const I18N = {
     language: "Språk",
     langEnglish: "English",
     langSwedish: "Svenska",
+    tabMap: "Karta",
+    mapLoading: "Placerar restauranger på kartan…",
+    mapNoAddress: "Lägg till en adress för att visa restaurangen på kartan.",
+    mapNoLocations: "Inga restauranger med adress kunde hittas.",
+    mapLegend: "Kartfärger",
+    viewDetails: "Visa detaljer",
+    status: "Status",
+    openInAppleMaps: "Öppna i Apple Maps",
+    mapHint: "Tryck på en nål för detaljer. Färgerna visar restaurangstatus.",
   },
 };
 
 let lang = localStorage.getItem(LANG_KEY) || "en";
 let listSort = localStorage.getItem(SORT_KEY) || "name";
-let listMode = localStorage.getItem(LIST_MODE_KEY) || "restaurants";
+let homeTab = localStorage.getItem(HOME_TAB_KEY) || localStorage.getItem("restaurant-crm-list-mode") || "restaurants";
+if (homeTab !== "restaurants" && homeTab !== "staff" && homeTab !== "map") homeTab = "restaurants";
 let listTagFilters = loadTagFilters();
 let listSearch = "";
 let weeklyAutoExportDoneThisSession = false;
@@ -342,11 +371,21 @@ function clearListTagFilters() {
   renderList();
 }
 
-function setListMode(next) {
-  listMode = next;
-  localStorage.setItem(LIST_MODE_KEY, next);
+function setHomeTab(next) {
+  homeTab = next;
+  localStorage.setItem(HOME_TAB_KEY, next);
+  destroyMap();
   renderList();
 }
+
+function destroyMap() {
+  if (mapInstance) {
+    mapInstance.remove();
+    mapInstance = null;
+  }
+}
+
+let mapInstance = null;
 
 function restaurantMatchesTagFilters(r) {
   if (!listTagFilters.length) return true;
@@ -467,6 +506,20 @@ function bindTagPicker({ initialTags = [] }) {
       return [...selected];
     },
   };
+}
+
+function bindStatusPicker({ initialStatus = "regular" } = {}) {
+  let selected = initialStatus || "regular";
+  app.querySelectorAll(".status-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      selected = chip.dataset.status;
+      app.querySelectorAll(".status-chip").forEach((c) => {
+        c.classList.toggle("selected", c.dataset.status === selected);
+      });
+    });
+    chip.classList.toggle("selected", chip.dataset.status === selected);
+  });
+  return { getStatus: () => selected };
 }
 
 function collectUsedTags(restaurants) {
@@ -668,8 +721,12 @@ function normalizeRestaurant(r) {
     note: r.note || "",
     image: r.image || "",
     link: r.link || "",
+    status: r.status || "",
     tags: Array.isArray(r.tags) ? r.tags : [],
     pinned: !!r.pinned,
+    lat: r.lat ?? null,
+    lng: r.lng ?? null,
+    geocodeQuery: r.geocodeQuery || "",
     lastVisitedAt: r.lastVisitedAt || null,
     visits: Array.isArray(r.visits) ? r.visits : [],
   };
@@ -721,6 +778,7 @@ async function saveRestaurant(data, id) {
     note: data.note || "",
     image: data.image || "",
     link: data.link || "",
+    status: data.status || "",
     tags: data.tags || [],
     pinned: !!data.pinned,
     createdAt: Date.now(),
@@ -1013,6 +1071,7 @@ let route = { view: "list" };
 const app = document.getElementById("app");
 
 function navigate(next) {
+  if (route.view === "list" && next.view !== "list") destroyMap();
   route = next;
   render();
 }
@@ -1365,6 +1424,157 @@ function bindSwipeRow(row, { onTap, onDelete }) {
   });
 }
 
+function statusLabel(statusId) {
+  const preset = STATUS_PRESETS.find((p) => p.id === statusId);
+  if (preset) return lang === "sv" ? preset.sv : preset.en;
+  return statusId;
+}
+
+function getRestaurantStatus(r) {
+  if (r.status && STATUS_PRESETS.some((p) => p.id === r.status)) return r.status;
+  if (r.pinned) return "favorite";
+  if ((r.tags || []).includes("avoid")) return "avoid";
+  if ((r.tags || []).includes("favorite")) return "favorite";
+  return "regular";
+}
+
+function statusColor(statusId) {
+  return STATUS_PRESETS.find((p) => p.id === statusId)?.color || "#0a84ff";
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensureRestaurantCoords(restaurant) {
+  const query = destinationQuery(restaurant);
+  if (!trim(query)) return restaurant;
+  if (restaurant.lat != null && restaurant.lng != null && restaurant.geocodeQuery === query) {
+    return restaurant;
+  }
+  try {
+    const coords = await geocodeAddress(query);
+    if (!coords) return restaurant;
+    return saveRestaurant({ lat: coords.lat, lng: coords.lng, geocodeQuery: query }, restaurant.id);
+  } catch {
+    return restaurant;
+  }
+}
+
+function createMapIcon(color) {
+  return L.divIcon({
+    className: "map-pin-wrap",
+    html: `<div class="map-pin" style="background:${color}"></div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -16],
+  });
+}
+
+function mapLegendMarkup() {
+  return `
+    <div class="map-legend">
+      <div class="map-legend-title">${escapeHtml(t("mapLegend"))}</div>
+      <div class="map-legend-items">
+        ${STATUS_PRESETS.map(
+          (s) =>
+            `<span class="map-legend-item"><span class="map-legend-dot" style="background:${s.color}"></span>${escapeHtml(lang === "sv" ? s.sv : s.en)}</span>`
+        ).join("")}
+      </div>
+    </div>`;
+}
+
+function homeTabsMarkup() {
+  return `
+    <nav class="home-tabs" aria-label="Main">
+      <button type="button" class="home-tab ${homeTab === "restaurants" ? "active" : ""}" data-home-tab="restaurants">
+        <span class="home-tab-icon" aria-hidden="true">🍽</span>
+        <span class="home-tab-label">${escapeHtml(t("searchModeRestaurants"))}</span>
+      </button>
+      <button type="button" class="home-tab ${homeTab === "staff" ? "active" : ""}" data-home-tab="staff">
+        <span class="home-tab-icon" aria-hidden="true">👤</span>
+        <span class="home-tab-label">${escapeHtml(t("searchModeStaff"))}</span>
+      </button>
+      <button type="button" class="home-tab ${homeTab === "map" ? "active" : ""}" data-home-tab="map">
+        <span class="home-tab-icon" aria-hidden="true">🗺</span>
+        <span class="home-tab-label">${escapeHtml(t("tabMap"))}</span>
+      </button>
+    </nav>`;
+}
+
+async function initRestaurantMap(restaurants) {
+  if (typeof L === "undefined") return;
+  const container = document.getElementById("restaurant-map");
+  if (!container) return;
+
+  destroyMap();
+  mapInstance = L.map(container, { zoomControl: true }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap",
+    maxZoom: 19,
+  }).addTo(mapInstance);
+
+  const loadingEl = document.getElementById("map-loading");
+  const emptyEl = document.getElementById("map-empty");
+  const withQuery = restaurants.filter((r) => trim(destinationQuery(r)));
+  const markers = [];
+
+  if (!withQuery.length) {
+    if (loadingEl) loadingEl.hidden = true;
+    if (emptyEl) {
+      emptyEl.textContent = t("mapNoAddress");
+      emptyEl.hidden = false;
+    }
+    return;
+  }
+
+  for (let i = 0; i < withQuery.length; i++) {
+    if (loadingEl) {
+      loadingEl.textContent = `${t("mapLoading")} (${i + 1}/${withQuery.length})`;
+    }
+    const r = await ensureRestaurantCoords(withQuery[i]);
+    if (r.lat != null && r.lng != null) {
+      const status = getRestaurantStatus(r);
+      const marker = L.marker([r.lat, r.lng], { icon: createMapIcon(statusColor(status)) });
+      const popup = document.createElement("div");
+      popup.className = "map-callout";
+      popup.innerHTML = `
+        <div class="map-callout-name">${escapeHtml(r.name)}</div>
+        <div class="map-callout-visit">${escapeHtml(t("lastVisit"))}: ${escapeHtml(formatRelativeVisit(r.lastVisitedAt))}</div>
+        <div class="map-callout-status"><span class="map-legend-dot" style="background:${statusColor(status)}"></span> ${escapeHtml(statusLabel(status))}</div>
+        <button type="button" class="btn btn-primary full-width map-details-btn">${escapeHtml(t("viewDetails"))}</button>
+        <a class="map-maps-link" href="${escapeHtml(appleMapsUrl(destinationQuery(r)))}" target="_blank" rel="noopener noreferrer">${escapeHtml(t("openInAppleMaps"))}</a>
+      `;
+      popup.querySelector(".map-details-btn").addEventListener("click", () => {
+        mapInstance?.closePopup();
+        navigate({ view: "detail", id: r.id });
+      });
+      marker.bindPopup(popup, { className: "map-popup", maxWidth: 260 });
+      marker.addTo(mapInstance);
+      markers.push(marker);
+    }
+    if (i < withQuery.length - 1) await sleep(1100);
+  }
+
+  if (loadingEl) loadingEl.hidden = true;
+  if (!markers.length) {
+    if (emptyEl) {
+      emptyEl.textContent = t("mapNoLocations");
+      emptyEl.hidden = false;
+    }
+    return;
+  }
+  if (emptyEl) emptyEl.hidden = true;
+  mapInstance.fitBounds(L.featureGroup(markers).getBounds().pad(0.12));
+  setTimeout(() => mapInstance?.invalidateSize(), 100);
+}
+
+function bindHomeTabs() {
+  app.querySelectorAll("[data-home-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => setHomeTab(tab.dataset.homeTab));
+  });
+}
+
 if (!window._swipeDocBound) {
   document.addEventListener("touchstart", (e) => {
     if (!openSwipeRow) return;
@@ -1430,11 +1640,21 @@ async function renderList() {
   await checkWeeklyAutoBackup();
 
   const allRestaurants = await getAllRestaurants();
-  const isStaffMode = listMode === "staff";
+  const isStaffMode = homeTab === "staff";
+  const isMapMode = homeTab === "map";
   const query = listSearch.toLowerCase();
 
   let listBodyHtml = "";
-  if (isStaffMode) {
+  if (isMapMode) {
+    listBodyHtml = `
+      <p class="map-hint">${escapeHtml(t("mapHint"))}</p>
+      ${mapLegendMarkup()}
+      <div class="map-panel">
+        <div id="map-loading" class="map-loading">${escapeHtml(t("mapLoading"))}</div>
+        <p id="map-empty" class="map-empty" hidden></p>
+        <div id="restaurant-map" class="restaurant-map" role="application" aria-label="${escapeHtml(t("tabMap"))}"></div>
+      </div>`;
+  } else if (isStaffMode) {
     const staffResults = await searchStaffGlobally(listSearch);
     listBodyHtml =
       staffResults.length === 0
@@ -1506,7 +1726,7 @@ async function renderList() {
                 <div class="restaurant-card ${r.pinned ? "is-pinned" : ""}" data-id="${r.id}">
                   ${renderRestaurantThumb(r.image)}
                   <div class="info">
-                    <div class="title">${r.pinned ? '<span class="pin-indicator">★</span> ' : ""}${escapeHtml(r.name)}</div>
+                    <div class="title"><span class="status-dot" style="background:${statusColor(getRestaurantStatus(r))}"></span>${r.pinned ? '<span class="pin-indicator">★</span> ' : ""}${escapeHtml(r.name)}</div>
                     ${renderTagsHtml(r.tags, { compact: true })}
                     <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
                   </div>
@@ -1526,14 +1746,13 @@ async function renderList() {
       <h1>${APP_NAME} ${versionBadge()}</h1>
       <div class="header-actions">
         <button class="icon-btn icon-btn-ghost" id="settings-btn" type="button" aria-label="${escapeHtml(t("settings"))}">⚙</button>
-        <button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>
+        ${homeTab === "restaurants" ? `<button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>` : ""}
       </div>
     </header>
-    <main class="content">
-      <div class="search-mode-row">
-        <button type="button" class="search-mode-chip ${listMode === "restaurants" ? "selected" : ""}" data-list-mode="restaurants">${escapeHtml(t("searchModeRestaurants"))}</button>
-        <button type="button" class="search-mode-chip ${listMode === "staff" ? "selected" : ""}" data-list-mode="staff">${escapeHtml(t("searchModeStaff"))}</button>
-      </div>
+    <main class="content ${isMapMode ? "content-map" : ""}">
+      ${
+        !isMapMode
+          ? `
       <div class="search-box">
         <input id="search-input" type="search" placeholder="${escapeHtml(isStaffMode ? t("searchStaff") : t("searchPlaceholder"))}" value="${escapeHtml(listSearch)}" />
       </div>
@@ -1548,22 +1767,28 @@ async function renderList() {
         </div>
       </div>`
           : ""
+      }`
+          : ""
       }
       ${listBodyHtml}
     </main>
+    ${homeTabsMarkup()}
   `;
 
-  app.querySelector("#add-btn").addEventListener("click", () => navigate({ view: "add-restaurant" }));
   app.querySelector("#settings-btn").addEventListener("click", () => navigate({ view: "settings" }));
+  app.querySelector("#add-btn")?.addEventListener("click", () => navigate({ view: "add-restaurant" }));
+  bindHomeTabs();
+
+  if (isMapMode) {
+    initRestaurantMap(allRestaurants);
+  } else {
+    destroyMap();
+  }
 
   const searchInput = app.querySelector("#search-input");
-  searchInput.addEventListener("input", () => {
+  searchInput?.addEventListener("input", () => {
     listSearch = searchInput.value;
     renderList();
-  });
-
-  app.querySelectorAll(".search-mode-chip").forEach((chip) => {
-    chip.addEventListener("click", () => setListMode(chip.dataset.listMode));
   });
 
   app.querySelectorAll(".sort-chip[data-sort]").forEach((chip) => {
@@ -1588,7 +1813,7 @@ async function renderList() {
     card.addEventListener("click", () => navigate({ view: "detail", id: card.dataset.restaurantId }));
   });
 
-  if (!isStaffMode) {
+  if (!isStaffMode && !isMapMode) {
     app.querySelectorAll(".list .swipe-row").forEach((row) => {
       const card = row.querySelector(".restaurant-card");
       if (!card) return;
@@ -1636,6 +1861,7 @@ async function renderDetail(id) {
         ${renderRestaurantThumb(restaurant.image, "detail-photo")}
         <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
         ${renderTagsHtml(restaurant.tags)}
+        <div class="detail-status"><span class="status-dot" style="background:${statusColor(getRestaurantStatus(restaurant))}"></span> ${escapeHtml(statusLabel(getRestaurantStatus(restaurant)))}</div>
         <button type="button" class="pin-btn pin-btn-large ${restaurant.pinned ? "pinned" : ""}" id="toggle-pin-btn" aria-label="${escapeHtml(restaurant.pinned ? t("unpin") : t("pin"))}">
           ★ ${escapeHtml(restaurant.pinned ? t("pinned") : t("pin"))}
         </button>
@@ -1797,6 +2023,7 @@ async function renderRestaurantForm(editId) {
   let image = "";
   let link = "";
   let tags = [];
+  let status = "regular";
 
   if (editId) {
     const restaurant = await getRestaurant(editId);
@@ -1810,6 +2037,7 @@ async function renderRestaurantForm(editId) {
     image = restaurant.image || "";
     link = restaurant.link || "";
     tags = restaurant.tags || [];
+    status = restaurant.status || getRestaurantStatus(restaurant);
   }
 
   app.innerHTML = `
@@ -1844,6 +2072,15 @@ async function renderRestaurantForm(editId) {
           <textarea id="note" placeholder="${escapeHtml(t("restaurantNotePlaceholder"))}">${escapeHtml(note)}</textarea>
         </div>
         <div class="field">
+          <label>${escapeHtml(t("status"))}</label>
+          <div class="status-presets" id="status-picker">
+            ${STATUS_PRESETS.map(
+              (s) =>
+                `<button type="button" class="status-chip preset-chip" data-status="${s.id}"><span class="status-dot" style="background:${s.color}"></span>${escapeHtml(lang === "sv" ? s.sv : s.en)}</button>`
+            ).join("")}
+          </div>
+        </div>
+        <div class="field">
           <label>${escapeHtml(t("tags"))}</label>
           ${tagPickerMarkup(tags)}
         </div>
@@ -1862,6 +2099,7 @@ async function renderRestaurantForm(editId) {
   const saveBtn = app.querySelector("#save-btn");
   const photoPicker = bindPhotoPicker({ initialImage: image });
   const tagPicker = bindTagPicker({ initialTags: tags });
+  const statusPicker = bindStatusPicker({ initialStatus: status });
 
   function updateSave() {
     saveBtn.disabled = trim(nameInput.value) === "";
@@ -1877,17 +2115,25 @@ async function renderRestaurantForm(editId) {
 
   app.querySelector("#restaurant-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const saved = await saveRestaurant(
-      {
-        name: trim(nameInput.value),
-        address: trim(addressInput.value),
-        link: trim(linkInput.value),
-        note: trim(noteInput.value),
-        image: photoPicker.getImagePayload(image),
-        tags: tagPicker.getTags(),
-      },
-      editId
-    );
+    const addressValue = trim(addressInput.value);
+    const payload = {
+      name: trim(nameInput.value),
+      address: addressValue,
+      link: trim(linkInput.value),
+      note: trim(noteInput.value),
+      image: photoPicker.getImagePayload(image),
+      tags: tagPicker.getTags(),
+      status: statusPicker.getStatus(),
+    };
+    if (editId) {
+      const existing = await getRestaurant(editId);
+      if (existing && addressValue !== (existing.address || "")) {
+        payload.lat = null;
+        payload.lng = null;
+        payload.geocodeQuery = "";
+      }
+    }
+    const saved = await saveRestaurant(payload, editId);
     navigate(isEdit ? { view: "detail", id: saved.id } : { view: "list" });
   });
 }
