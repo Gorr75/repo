@@ -1174,12 +1174,32 @@ textarea {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .staff-browse-card .subtitle .role-badge {
   font-size: 0.62rem;
   padding: 2px 7px;
+}
+
+.subtitle-sep {
+  color: var(--text-tertiary);
+}
+
+.staff-restaurant-link {
+  font-size: inherit;
+  color: var(--accent);
+  font-weight: 500;
+  padding: 0;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-restaurant-link:active {
+  opacity: 0.7;
 }
 
 .call-btn-list {

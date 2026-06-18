@@ -1,6 +1,8 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v20";
+const APP_VERSION = "v21";
+const STAFF_SORT_KEY = "restaurant-crm-staff-sort";
+const STAFF_ROLE_FILTER_KEY = "restaurant-crm-staff-role-filter";
 const APP_NAME = "Restaurant CRM";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
@@ -141,6 +143,11 @@ const I18N = {
     noStaffMatches: "No staff found",
     noStaffList: "No staff yet",
     noStaffListHint: "Open a restaurant and tap + Add Staff Member.",
+    sortRestaurant: "Restaurant",
+    sortRole: "Role",
+    filterByRole: "Role",
+    allRoles: "All roles",
+    openRestaurant: "Open restaurant",
     staffAt: "at {name}",
     backupReminderTitle: "Time for a backup?",
     backupReminderMsg: "You have not exported a backup in over {n} days. Save one to iCloud Drive to protect your data.",
@@ -268,6 +275,11 @@ const I18N = {
     noStaffMatches: "Ingen personal hittades",
     noStaffList: "Ingen personal ännu",
     noStaffListHint: "Öppna en restaurang och tryck + Lägg till personal.",
+    sortRestaurant: "Restaurang",
+    sortRole: "Roll",
+    filterByRole: "Roll",
+    allRoles: "Alla roller",
+    openRestaurant: "Öppna restaurang",
     staffAt: "på {name}",
     backupReminderTitle: "Dags att säkerhetskopiera?",
     backupReminderMsg: "Du har inte exporterat en säkerhetskopia på över {n} dagar. Spara en i iCloud Drive för att skydda din data.",
@@ -304,6 +316,8 @@ let lang = localStorage.getItem(LANG_KEY) || "en";
 let listSort = localStorage.getItem(SORT_KEY) || "name";
 let homeTab = localStorage.getItem(HOME_TAB_KEY) || localStorage.getItem("restaurant-crm-list-mode") || "restaurants";
 if (homeTab !== "restaurants" && homeTab !== "staff" && homeTab !== "map") homeTab = "restaurants";
+let staffSort = localStorage.getItem(STAFF_SORT_KEY) || "name";
+let staffRoleFilter = localStorage.getItem(STAFF_ROLE_FILTER_KEY) || "";
 let listTagFilters = loadTagFilters();
 let listSearch = "";
 let weeklyAutoExportDoneThisSession = false;
@@ -984,13 +998,60 @@ function setAutoBackup(mode) {
   render();
 }
 
-async function getStaffListEntries(query = "") {
+function setStaffSort(next) {
+  staffSort = next;
+  localStorage.setItem(STAFF_SORT_KEY, next);
+  renderList();
+}
+
+function setStaffRoleFilter(next) {
+  staffRoleFilter = next;
+  if (staffRoleFilter) {
+    localStorage.setItem(STAFF_ROLE_FILTER_KEY, staffRoleFilter);
+  } else {
+    localStorage.removeItem(STAFF_ROLE_FILTER_KEY);
+  }
+  renderList();
+}
+
+function collectUsedRoles(entries) {
+  const set = new Set();
+  for (const s of entries) {
+    if (s.role) set.add(s.role);
+  }
+  return [...set].sort((a, b) => roleLabel(a).localeCompare(roleLabel(b), undefined, { sensitivity: "base" }));
+}
+
+function sortStaffEntries(entries, sort) {
+  const copy = [...entries];
+  if (sort === "restaurant") {
+    return copy.sort((a, b) => {
+      const c = a.restaurant.name.localeCompare(b.restaurant.name, undefined, { sensitivity: "base" });
+      if (c !== 0) return c;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+  }
+  if (sort === "role") {
+    return copy.sort((a, b) => {
+      const c = roleLabel(a.role).localeCompare(roleLabel(b.role), undefined, { sensitivity: "base" });
+      if (c !== 0) return c;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+  }
+  return copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+async function getStaffBrowseEntries(query = "", { applyRoleFilter = true } = {}) {
   const q = trim(query).toLowerCase();
   const [staff, restaurants] = await Promise.all([getAllStaff(), getAllRestaurants()]);
   const byId = Object.fromEntries(restaurants.map((r) => [r.id, r]));
   let entries = staff
     .map((s) => ({ ...s, restaurant: byId[s.restaurantId] }))
     .filter((s) => s.restaurant);
+
+  if (applyRoleFilter && staffRoleFilter) {
+    entries = entries.filter((s) => s.role === staffRoleFilter);
+  }
 
   if (q) {
     entries = entries.filter(
@@ -1005,7 +1066,12 @@ async function getStaffListEntries(query = "") {
     );
   }
 
-  return entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return sortStaffEntries(entries, staffSort);
+}
+
+function staffFormReturnRoute() {
+  if (homeTab === "staff") return { view: "list" };
+  return null;
 }
 
 async function importAllData(file) {
@@ -1427,7 +1493,7 @@ function bindSwipeRow(row, { onTap, onDelete }) {
       closeAllSwipes();
       return;
     }
-    if (e.target.closest("a, .edit-staff-btn, .contact-link, .call-btn, .pin-btn, .staff-search-card")) return;
+    if (e.target.closest("a, .edit-staff-btn, .contact-link, .call-btn, .pin-btn, .staff-restaurant-link")) return;
     if (onTap) onTap(e);
   });
 }
@@ -1663,20 +1729,51 @@ async function renderList() {
         <div id="restaurant-map" class="restaurant-map" role="application" aria-label="${escapeHtml(t("tabMap"))}"></div>
       </div>`;
   } else if (isStaffMode) {
-    const allStaffEntries = await getStaffListEntries("");
-    const staffResults = listSearch.trim()
-      ? await getStaffListEntries(listSearch)
-      : allStaffEntries;
+    const allStaffEntries = await getStaffBrowseEntries("", { applyRoleFilter: false });
+    const staffResults = await getStaffBrowseEntries(listSearch);
+    const usedRoles = collectUsedRoles(allStaffEntries);
+
+    const staffControlsHtml = `
+      <div class="sort-row">
+        <span class="sort-label">${escapeHtml(t("sortLabel"))}</span>
+        <div class="sort-options">
+          <button type="button" class="sort-chip ${staffSort === "name" ? "selected" : ""}" data-staff-sort="name">${escapeHtml(t("sortName"))}</button>
+          <button type="button" class="sort-chip ${staffSort === "restaurant" ? "selected" : ""}" data-staff-sort="restaurant">${escapeHtml(t("sortRestaurant"))}</button>
+          <button type="button" class="sort-chip ${staffSort === "role" ? "selected" : ""}" data-staff-sort="role">${escapeHtml(t("sortRole"))}</button>
+        </div>
+      </div>
+      ${
+        usedRoles.length
+          ? `
+      <div class="tag-filter-row">
+        <div class="tag-filter-header">
+          <span class="sort-label">${escapeHtml(t("filterByRole"))}</span>
+          ${staffRoleFilter ? `<button type="button" class="btn-text tag-clear-btn" id="clear-role-filters">${escapeHtml(t("allRoles"))}</button>` : ""}
+        </div>
+        <div class="tag-filter-scroll">
+          <button type="button" class="tag-filter-chip ${staffRoleFilter === "" ? "selected" : ""}" data-staff-role="">${escapeHtml(t("allRoles"))}</button>
+          ${usedRoles
+            .map(
+              (role) =>
+                `<button type="button" class="tag-filter-chip tag-style-${getRoleBadgeClass(role)} ${staffRoleFilter === role ? "selected" : ""}" data-staff-role="${escapeHtml(role)}">${escapeHtml(roleLabel(role))}</button>`
+            )
+            .join("")}
+        </div>
+      </div>`
+          : ""
+      }`;
 
     listBodyHtml =
       staffResults.length === 0
         ? `
+        ${staffControlsHtml}
         <div class="empty-state">
           <div class="icon">👤</div>
           <h2>${escapeHtml(allStaffEntries.length === 0 ? t("noStaffList") : t("noStaffMatches"))}</h2>
           <p>${escapeHtml(allStaffEntries.length === 0 ? t("noStaffListHint") : t("trySearch"))}</p>
         </div>`
         : `
+        ${staffControlsHtml}
         <ul class="list staff-browse-list">
           ${staffResults
             .map((s) => {
@@ -1688,14 +1785,18 @@ async function renderList() {
                   ${renderStaffAvatar(s)}
                   <div class="info">
                     <div class="title">${escapeHtml(s.name)}</div>
-                    <div class="subtitle"><span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span> · ${escapeHtml(s.restaurant.name)}</div>
+                    <div class="subtitle">
+                      <span class="role-badge ${getRoleBadgeClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span>
+                      <span class="subtitle-sep">·</span>
+                      <button type="button" class="staff-restaurant-link" data-restaurant-id="${s.restaurantId}" aria-label="${escapeHtml(t("openRestaurant"))}: ${escapeHtml(s.restaurant.name)}">${escapeHtml(s.restaurant.name)}</button>
+                    </div>
                   </div>
                   ${
                     phone
                       ? `<a class="call-btn call-btn-list" href="tel:${formatPhoneLink(phone)}" aria-label="${escapeHtml(t("call"))}">📞</a>`
                       : ""
                   }
-                  <span class="chevron">›</span>
+                  <span class="chevron" aria-hidden="true">›</span>
                 </div>
               `)}
             </li>`;
@@ -1837,9 +1938,9 @@ async function renderList() {
       const staffId = card.dataset.staffId;
       const restaurantId = card.dataset.restaurantId;
       bindSwipeRow(row, {
-        onTap: () => navigate({ view: "detail", id: restaurantId }),
+        onTap: () => navigate({ view: "edit-staff", restaurantId, staffId }),
         onDelete: async () => {
-          const allEntries = await getStaffListEntries("");
+          const allEntries = await getStaffBrowseEntries("", { applyRoleFilter: false });
           const member = allEntries.find((s) => s.id === staffId);
           confirmDelete(
             t("deleteStaffTitle", { name: member ? member.name : "staff" }),
@@ -1852,6 +1953,23 @@ async function renderList() {
         },
       });
     });
+
+    app.querySelectorAll(".staff-restaurant-link").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navigate({ view: "detail", id: btn.dataset.restaurantId });
+      });
+    });
+
+    app.querySelectorAll("[data-staff-sort]").forEach((chip) => {
+      chip.addEventListener("click", () => setStaffSort(chip.dataset.staffSort));
+    });
+
+    app.querySelectorAll("[data-staff-role]").forEach((chip) => {
+      chip.addEventListener("click", () => setStaffRoleFilter(chip.dataset.staffRole));
+    });
+
+    app.querySelector("#clear-role-filters")?.addEventListener("click", () => setStaffRoleFilter(""));
   }
 
   if (!isStaffMode && !isMapMode) {
@@ -2301,7 +2419,10 @@ async function renderStaffForm(restaurantId, editStaffId) {
     });
   });
 
-  const cancel = () => navigate({ view: "detail", id: restaurantId });
+  const cancel = () => {
+    const back = staffFormReturnRoute();
+    navigate(back || { view: "detail", id: restaurantId });
+  };
 
   app.querySelector("#cancel-btn").addEventListener("click", cancel);
   app.querySelector("#cancel-form").addEventListener("click", cancel);
@@ -2320,7 +2441,8 @@ async function renderStaffForm(restaurantId, editStaffId) {
       },
       editStaffId
     );
-    navigate({ view: "detail", id: restaurantId });
+    const back = staffFormReturnRoute();
+    navigate(back || { view: "detail", id: restaurantId });
   });
 }
 
