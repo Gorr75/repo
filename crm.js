@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v31";
+const APP_VERSION = "v32";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -163,9 +163,15 @@ const I18N = {
     autoBackupVisit: "After each visit",
     autoBackupHint: "Weekly and visit modes download a backup file automatically. Save to iCloud Drive when prompted.",
     autoBackupDone: "Automatic backup downloaded.",
-    link: "Website / Instagram",
-    linkPlaceholder: "https://… or instagram.com/…",
-    noLink: "No link",
+    link: "Website",
+    linkPlaceholder: "https://restaurant.com",
+    booking: "Booking",
+    bookingPlaceholder: "https://restaurant.com/reservations",
+    instagram: "Instagram",
+    instagramPlaceholder: "@restaurant",
+    noLink: "No website",
+    noBooking: "No booking link",
+    noInstagram: "No Instagram",
     openLink: "Open link",
     clearTagFilters: "Clear filters",
     filterByCity: "City",
@@ -193,6 +199,8 @@ const I18N = {
     seedImportBtn: "Import starter list",
     seedSkipBtn: "Start empty",
     seedImportDone: "Added {n} restaurants. Swipe left on a restaurant to delete any you don't need.",
+    seedImportUpdated: "Updated website, booking, or Instagram links on {n} restaurants.",
+    seedImportAddedUpdated: "Added {a} restaurants and updated links on {u}.",
     seedImportNone: "All starter restaurants are already in your list.",
     seedStarterSection: "Starter list",
     seedStarterHint:
@@ -312,9 +320,15 @@ const I18N = {
     autoBackupVisit: "Efter varje besök",
     autoBackupHint: "Vecko- och besöksläge laddar ner en säkerhetskopia automatiskt. Spara i iCloud Drive när du uppmanas.",
     autoBackupDone: "Automatisk säkerhetskopia har laddats ner.",
-    link: "Webbplats / Instagram",
-    linkPlaceholder: "https://… eller instagram.com/…",
-    noLink: "Ingen länk",
+    link: "Webbplats",
+    linkPlaceholder: "https://restaurang.se",
+    booking: "Bokning",
+    bookingPlaceholder: "https://restaurang.se/boka",
+    instagram: "Instagram",
+    instagramPlaceholder: "@restaurang",
+    noLink: "Ingen webbplats",
+    noBooking: "Ingen bokningslänk",
+    noInstagram: "Ingen Instagram",
     openLink: "Öppna länk",
     clearTagFilters: "Rensa filter",
     filterByCity: "Stad",
@@ -342,6 +356,8 @@ const I18N = {
     seedImportBtn: "Importera startlista",
     seedSkipBtn: "Börja tomt",
     seedImportDone: "Lade till {n} restauranger. Svep vänster på en restaurang för att radera.",
+    seedImportUpdated: "Uppdaterade webbplats-, boknings- eller Instagram-länkar på {n} restauranger.",
+    seedImportAddedUpdated: "Lade till {a} restauranger och uppdaterade länkar på {u}.",
     seedImportNone: "Alla startrestauranger finns redan i din lista.",
     seedStarterSection: "Startlista",
     seedStarterHint:
@@ -650,6 +666,8 @@ function restaurantMatchesSearch(r, query) {
   if (getRestaurantCountry(r).toLowerCase().includes(q)) return true;
   if ((r.note || "").toLowerCase().includes(q)) return true;
   if ((r.link || "").toLowerCase().includes(q)) return true;
+  if ((r.bookingUrl || "").toLowerCase().includes(q)) return true;
+  if ((r.instagram || "").toLowerCase().includes(q)) return true;
   if ((r.tags || []).some((tag) => tagLabel(tag).toLowerCase().includes(q))) return true;
   return false;
 }
@@ -794,6 +812,64 @@ function formatExternalUrl(url) {
   return `https://${u}`;
 }
 
+function formatInstagramUrl(value) {
+  const u = trim(value);
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  const handle = u.replace(/^@/, "");
+  return `https://instagram.com/${handle}`;
+}
+
+function formatSeedImportMessage({ added, updated }) {
+  if (added > 0 && updated > 0) return t("seedImportAddedUpdated", { a: added, u: updated });
+  if (added > 0) return t("seedImportDone", { n: added });
+  if (updated > 0) return t("seedImportUpdated", { n: updated });
+  return t("seedImportNone");
+}
+
+function restaurantLinksMarkup(restaurant) {
+  const rows = [
+    {
+      label: t("link"),
+      empty: t("noLink"),
+      value: restaurant.link,
+      href: restaurant.link ? formatExternalUrl(restaurant.link) : "",
+      className: "link-row-website",
+    },
+    {
+      label: t("booking"),
+      empty: t("noBooking"),
+      value: restaurant.bookingUrl,
+      href: restaurant.bookingUrl ? formatExternalUrl(restaurant.bookingUrl) : "",
+      className: "link-row-booking",
+    },
+    {
+      label: t("instagram"),
+      empty: t("noInstagram"),
+      value: restaurant.instagram,
+      href: restaurant.instagram ? formatInstagramUrl(restaurant.instagram) : "",
+      className: "link-row-instagram",
+    },
+  ];
+
+  return rows
+    .map((row) => {
+      if (row.href) {
+        return `
+          <a class="link-row ${row.className}" href="${escapeHtml(row.href)}" target="_blank" rel="noopener noreferrer">
+            <span class="label">${escapeHtml(row.label)}</span>
+            <span class="link-value">${escapeHtml(row.value)}</span>
+          </a>`;
+      }
+      return `
+          <div class="card-row">
+            <span class="label">${escapeHtml(row.label)}</span>
+            <span class="value muted">${escapeHtml(row.empty)}</span>
+          </div>`;
+    })
+    .join("");
+}
+
 const DB_NAME = "restaurant-crm";
 const DB_VERSION = 1;
 
@@ -834,6 +910,8 @@ function normalizeRestaurant(r) {
     note: r.note || "",
     image: r.image || "",
     link: r.link || "",
+    bookingUrl: r.bookingUrl || "",
+    instagram: r.instagram || "",
     city: r.city || "",
     country: r.country || "",
     status: r.status || "",
@@ -896,6 +974,8 @@ async function saveRestaurant(data, id) {
     note: data.note || "",
     image: data.image || "",
     link: data.link || "",
+    bookingUrl: data.bookingUrl || "",
+    instagram: data.instagram || "",
     status: data.status || "",
     tags: data.tags || [],
     pinned: !!data.pinned,
@@ -1216,34 +1296,66 @@ function restaurantMatchKey(restaurant) {
   return `${name}|${getRestaurantCity(restaurant).toLowerCase()}|${getRestaurantCountry(restaurant).toLowerCase()}`;
 }
 
+function restaurantAltMatchKey(restaurant) {
+  return `${(restaurant.name || "").toLowerCase().trim()}|${getRestaurantCity(restaurant).toLowerCase()}|${getRestaurantCountry(restaurant).toLowerCase()}`;
+}
+
+function findExistingRestaurantForSeed(seed, existingByKey, existingByAlt) {
+  return existingByKey.get(restaurantMatchKey(seed)) || existingByAlt.get(restaurantAltMatchKey(seed));
+}
+
+function seedLinkPatch(existing, seed) {
+  const patch = {};
+  if (seed.link && !existing.link) patch.link = seed.link;
+  if (seed.bookingUrl && !existing.bookingUrl) patch.bookingUrl = seed.bookingUrl;
+  if (seed.instagram && !existing.instagram) patch.instagram = seed.instagram;
+  return patch;
+}
+
 async function importSeedRestaurants() {
   const seeds = getSeedRestaurants();
-  if (!seeds.length) return 0;
+  if (!seeds.length) return { added: 0, updated: 0 };
 
   const existing = await getAllRestaurants();
-  const existingKeys = new Set(existing.map(restaurantMatchKey));
+  const existingByKey = new Map(existing.map((r) => [restaurantMatchKey(r), r]));
+  const existingByAlt = new Map(existing.map((r) => [restaurantAltMatchKey(r), r]));
   let added = 0;
+  let updated = 0;
 
   for (const seed of seeds) {
-    const key = restaurantMatchKey(seed);
-    if (existingKeys.has(key)) continue;
-    await saveRestaurant({
+    const match = findExistingRestaurantForSeed(seed, existingByKey, existingByAlt);
+    if (match) {
+      const patch = seedLinkPatch(match, seed);
+      if (Object.keys(patch).length) {
+        const saved = await saveRestaurant(patch, match.id);
+        existingByKey.set(restaurantMatchKey(saved), saved);
+        existingByAlt.set(restaurantAltMatchKey(saved), saved);
+        updated++;
+      }
+      continue;
+    }
+
+    const saved = await saveRestaurant({
       name: seed.name,
       address: seed.address || "",
       city: seed.city || "",
       country: seed.country || "",
+      link: seed.link || "",
+      bookingUrl: seed.bookingUrl || "",
+      instagram: seed.instagram || "",
       note: seed.note || "",
       tags: seed.tags || [],
       status: "want-to-try",
     });
-    existingKeys.add(key);
+    existingByKey.set(restaurantMatchKey(saved), saved);
+    existingByAlt.set(restaurantAltMatchKey(saved), saved);
     added++;
   }
 
   if (window.RESTAURANT_SEED_LIST?.id) {
     localStorage.setItem(SEED_IMPORTED_ID_KEY, window.RESTAURANT_SEED_LIST.id);
   }
-  return added;
+  return { added, updated };
 }
 
 function markSeedPromptHandled(reason) {
@@ -1284,10 +1396,10 @@ function showSeedWelcomeModal() {
     const importBtn = overlay.querySelector("#seed-import");
     importBtn.disabled = true;
     try {
-      const added = await importSeedRestaurants();
+      const result = await importSeedRestaurants();
       markSeedPromptHandled("imported");
       close();
-      alert(added > 0 ? t("seedImportDone", { n: added }) : t("seedImportNone"));
+      alert(formatSeedImportMessage(result));
       await renderList();
     } catch (err) {
       importBtn.disabled = false;
@@ -1325,9 +1437,9 @@ function bindSeedControls() {
     const btn = app.querySelector("#seed-import-btn");
     if (btn) btn.disabled = true;
     try {
-      const added = await importSeedRestaurants();
+      const result = await importSeedRestaurants();
       markSeedPromptHandled("imported-settings");
-      alert(added > 0 ? t("seedImportDone", { n: added }) : t("seedImportNone"));
+      alert(formatSeedImportMessage(result));
       navigate({ view: "list" });
     } catch (err) {
       if (btn) btn.disabled = false;
@@ -2463,19 +2575,7 @@ async function renderDetail(id) {
             <span class="value muted">${escapeHtml(t("noNote"))}</span>
           </div>`
           }
-          ${
-            restaurant.link
-              ? `
-          <a class="link-row" href="${escapeHtml(formatExternalUrl(restaurant.link))}" target="_blank" rel="noopener noreferrer">
-            <span class="label">${escapeHtml(t("link"))}</span>
-            <span class="link-value">${escapeHtml(restaurant.link)}</span>
-          </a>`
-              : `
-          <div class="card-row">
-            <span class="label">${escapeHtml(t("link"))}</span>
-            <span class="value muted">${escapeHtml(t("noLink"))}</span>
-          </div>`
-          }
+          ${restaurantLinksMarkup(restaurant)}
         </div>
         <button class="btn btn-secondary full-width" id="edit-restaurant-btn" type="button">${escapeHtml(t("editRestaurant"))}</button>
       </div>
@@ -2588,6 +2688,8 @@ async function renderRestaurantForm(editId) {
   let note = "";
   let image = "";
   let link = "";
+  let bookingUrl = "";
+  let instagram = "";
   let tags = [];
   let status = "regular";
   let city = "";
@@ -2606,6 +2708,8 @@ async function renderRestaurantForm(editId) {
     note = restaurant.note || "";
     image = restaurant.image || "";
     link = restaurant.link || "";
+    bookingUrl = restaurant.bookingUrl || "";
+    instagram = restaurant.instagram || "";
     tags = restaurant.tags || [];
     status = restaurant.status || getRestaurantStatus(restaurant);
   }
@@ -2644,8 +2748,16 @@ async function renderRestaurantForm(editId) {
           </div>
         </div>
         <div class="field">
-          <label for="link">${escapeHtml(t("link"))}</label>
-          <input id="link" type="url" inputmode="url" value="${escapeHtml(link)}" placeholder="${escapeHtml(t("linkPlaceholder"))}" />
+          <label for="website">${escapeHtml(t("link"))}</label>
+          <input id="website" type="url" inputmode="url" value="${escapeHtml(link)}" placeholder="${escapeHtml(t("linkPlaceholder"))}" />
+        </div>
+        <div class="field">
+          <label for="booking-url">${escapeHtml(t("booking"))}</label>
+          <input id="booking-url" type="url" inputmode="url" value="${escapeHtml(bookingUrl)}" placeholder="${escapeHtml(t("bookingPlaceholder"))}" />
+        </div>
+        <div class="field">
+          <label for="instagram">${escapeHtml(t("instagram"))}</label>
+          <input id="instagram" type="text" inputmode="url" value="${escapeHtml(instagram)}" placeholder="${escapeHtml(t("instagramPlaceholder"))}" autocapitalize="none" />
         </div>
         <div class="field">
           <label for="note">${escapeHtml(t("note"))}</label>
@@ -2676,7 +2788,9 @@ async function renderRestaurantForm(editId) {
   const addressInput = app.querySelector("#address");
   const cityInput = app.querySelector("#city");
   const countryInput = app.querySelector("#country");
-  const linkInput = app.querySelector("#link");
+  const websiteInput = app.querySelector("#website");
+  const bookingUrlInput = app.querySelector("#booking-url");
+  const instagramInput = app.querySelector("#instagram");
   const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
   const photoPicker = bindPhotoPicker({ initialImage: image });
@@ -2705,7 +2819,9 @@ async function renderRestaurantForm(editId) {
       address: addressValue,
       city: cityValue,
       country: countryValue,
-      link: trim(linkInput.value),
+      link: trim(websiteInput.value),
+      bookingUrl: trim(bookingUrlInput.value),
+      instagram: trim(instagramInput.value),
       note: trim(noteInput.value),
       image: photoPicker.getImagePayload(image),
       tags: tagPicker.getTags(),

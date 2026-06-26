@@ -1325,6 +1325,30 @@ textarea {
   line-height: 1.4;
 }
 
+.link-row-booking .label::after,
+.link-row-instagram .label::after {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.link-row-booking .label::after {
+  content: "BOOK";
+  background: rgba(255, 149, 0, 0.18);
+  color: #ff9f0a;
+}
+
+.link-row-instagram .label::after {
+  content: "IG";
+  background: rgba(191, 90, 242, 0.18);
+  color: #bf5af2;
+}
+
 .auto-backup-block {
   margin-top: 18px;
   padding-top: 14px;
