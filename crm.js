@@ -1,12 +1,12 @@
-/* Restaurant CRM */
+/* Tableside */
 
-const APP_VERSION = "v34";
+const APP_VERSION = "v35";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
 const STAFF_SORT_KEY = "restaurant-crm-staff-sort";
 const STAFF_ROLE_FILTER_KEY = "restaurant-crm-staff-role-filter";
-const APP_NAME = "Restaurant CRM";
+const APP_NAME = "Tableside";
 const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
 const SORT_KEY = "restaurant-crm-sort";
@@ -194,7 +194,7 @@ const I18N = {
     status: "Status",
     openInAppleMaps: "Open in Apple Maps",
     mapHint: "Tap a pin for details. Pins are colored by restaurant status.",
-    seedWelcomeTitle: "Welcome to Restaurant CRM",
+    seedWelcomeTitle: "Welcome to Tableside",
     seedWelcomeMsg:
       "Import a starter list of Nordic Michelin restaurants (names, cities, addresses, and star tags). You can delete any you don't need, or mark them Avoid later.",
     seedImportBtn: "Import starter list",
@@ -352,7 +352,7 @@ const I18N = {
     status: "Status",
     openInAppleMaps: "Öppna i Apple Maps",
     mapHint: "Tryck på en nål för detaljer. Färgerna visar restaurangstatus.",
-    seedWelcomeTitle: "Välkommen till Restaurant CRM",
+    seedWelcomeTitle: "Välkommen till Tableside",
     seedWelcomeMsg:
       "Importera en startlista med nordiska Michelin-restauranger (namn, städer, adresser och stjärntaggar). Du kan radera de du inte behöver, eller markera Undvik senare.",
     seedImportBtn: "Importera startlista",
@@ -1128,7 +1128,7 @@ async function exportAllData({ silent = false, auto = false } = {}) {
   const restaurants = await getAllRestaurants();
   const staff = await getAllStaff();
   const payload = {
-    app: "restaurant-crm",
+    app: "tableside",
     version: 1,
     exportedAt: new Date().toISOString(),
     restaurants,
@@ -1138,7 +1138,7 @@ async function exportAllData({ silent = false, auto = false } = {}) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `restaurant-crm-backup-${todayDateString()}.json`;
+  a.download = `tableside-backup-${todayDateString()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
