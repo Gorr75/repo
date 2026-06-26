@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v33";
+const APP_VERSION = "v34";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -522,6 +522,22 @@ function restaurantLocationLine(r) {
   if (r.address) return r.address;
   if (getRestaurantCity(r) && getRestaurantCountry(r)) return `${getRestaurantCity(r)}, ${getRestaurantCountry(r)}`;
   return getRestaurantCity(r);
+}
+
+function restaurantListLocation(r) {
+  const city = getRestaurantCity(r);
+  if (!city) return "";
+  const country = getRestaurantCountry(r);
+  if (country && country !== "Sweden") return `${city}, ${country}`;
+  return city;
+}
+
+function normalizeRestaurantName(name) {
+  return (name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ");
 }
 
 function setHomeTab(next) {
@@ -1316,18 +1332,38 @@ function getSeedRestaurants() {
 }
 
 function restaurantMatchKey(restaurant) {
-  const name = (restaurant.name || "").toLowerCase().trim();
+  const name = normalizeRestaurantName(restaurant.name);
   const address = (restaurant.address || "").toLowerCase().trim();
   if (address) return `${name}|${address}`;
   return `${name}|${getRestaurantCity(restaurant).toLowerCase()}|${getRestaurantCountry(restaurant).toLowerCase()}`;
 }
 
 function restaurantAltMatchKey(restaurant) {
-  return `${(restaurant.name || "").toLowerCase().trim()}|${getRestaurantCity(restaurant).toLowerCase()}|${getRestaurantCountry(restaurant).toLowerCase()}`;
+  return `${normalizeRestaurantName(restaurant.name)}|${getRestaurantCity(restaurant).toLowerCase()}|${getRestaurantCountry(restaurant).toLowerCase()}`;
 }
 
-function findExistingRestaurantForSeed(seed, existingByKey, existingByAlt) {
-  return existingByKey.get(restaurantMatchKey(seed)) || existingByAlt.get(restaurantAltMatchKey(seed));
+function seedLookupKey(seed) {
+  return `${normalizeRestaurantName(seed.name)}|${(seed.city || "").toLowerCase()}|${(seed.country || "").toLowerCase()}`;
+}
+
+function buildRestaurantIndexes(restaurants) {
+  const byKey = new Map();
+  const byAlt = new Map();
+  const byNorm = new Map();
+  for (const r of restaurants) {
+    byKey.set(restaurantMatchKey(r), r);
+    byAlt.set(restaurantAltMatchKey(r), r);
+    byNorm.set(seedLookupKey(r), r);
+  }
+  return { byKey, byAlt, byNorm };
+}
+
+function findExistingRestaurantForSeed(seed, indexes) {
+  return (
+    indexes.byKey.get(restaurantMatchKey(seed)) ||
+    indexes.byAlt.get(restaurantAltMatchKey(seed)) ||
+    indexes.byNorm.get(seedLookupKey(seed))
+  );
 }
 
 function seedLinkPatch(existing, seed) {
@@ -1343,19 +1379,19 @@ async function importSeedRestaurants() {
   if (!seeds.length) return { added: 0, updated: 0 };
 
   const existing = await getAllRestaurants();
-  const existingByKey = new Map(existing.map((r) => [restaurantMatchKey(r), r]));
-  const existingByAlt = new Map(existing.map((r) => [restaurantAltMatchKey(r), r]));
+  const indexes = buildRestaurantIndexes(existing);
   let added = 0;
   let updated = 0;
 
   for (const seed of seeds) {
-    const match = findExistingRestaurantForSeed(seed, existingByKey, existingByAlt);
+    const match = findExistingRestaurantForSeed(seed, indexes);
     if (match) {
       const patch = seedLinkPatch(match, seed);
       if (Object.keys(patch).length) {
         const saved = await saveRestaurant(patch, match.id);
-        existingByKey.set(restaurantMatchKey(saved), saved);
-        existingByAlt.set(restaurantAltMatchKey(saved), saved);
+        indexes.byKey.set(restaurantMatchKey(saved), saved);
+        indexes.byAlt.set(restaurantAltMatchKey(saved), saved);
+        indexes.byNorm.set(seedLookupKey(saved), saved);
         updated++;
       }
       continue;
@@ -1373,8 +1409,9 @@ async function importSeedRestaurants() {
       tags: seed.tags || [],
       status: "want-to-try",
     });
-    existingByKey.set(restaurantMatchKey(saved), saved);
-    existingByAlt.set(restaurantAltMatchKey(saved), saved);
+    indexes.byKey.set(restaurantMatchKey(saved), saved);
+    indexes.byAlt.set(restaurantAltMatchKey(saved), saved);
+    indexes.byNorm.set(seedLookupKey(saved), saved);
     added++;
   }
 
@@ -2406,7 +2443,7 @@ async function renderList() {
                   <div class="info">
                     <div class="title"><span class="status-dot" style="background:${statusColor(getRestaurantStatus(r))}"></span>${r.pinned ? '<span class="pin-indicator">★</span> ' : ""}${escapeHtml(r.name)}</div>
                     ${renderTagsHtml(r.tags, { compact: true })}
-                    <div class="subtitle">${restaurantLocationLine(r) ? escapeHtml(restaurantLocationLine(r)) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
+                    <div class="subtitle">${restaurantListLocation(r) ? escapeHtml(restaurantListLocation(r)) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
                   </div>
                   <button type="button" class="pin-btn ${r.pinned ? "pinned" : ""}" data-pin-id="${r.id}" aria-label="${escapeHtml(r.pinned ? t("unpin") : t("pin"))}">★</button>
                   <span class="chevron">›</span>

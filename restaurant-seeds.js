@@ -151,6 +151,24 @@ function buildSeedNote(stars, phone, notes) {
   return parts.join(" · ");
 }
 
+function normalizeSeedName(name) {
+  return (name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ");
+}
+
+function dedupeSeeds(seeds) {
+  const seen = new Set();
+  return seeds.filter((seed) => {
+    const key = `${normalizeSeedName(seed.name)}|${(seed.city || "").toLowerCase()}|${(seed.country || "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function parseNordicMichelinSeeds(csv) {
   const rows = parseCsvRows(csv.trim());
   if (!rows.length) return [];
@@ -158,7 +176,8 @@ function parseNordicMichelinSeeds(csv) {
   const headers = rows[0].map((h) => h.trim());
   const index = Object.fromEntries(headers.map((h, i) => [h, i]));
 
-  return rows.slice(1).map((row) => {
+  return dedupeSeeds(
+    rows.slice(1).map((row) => {
     const get = (key) => (row[index[key]] || "").trim();
     const stars = get("Stars");
     const city = get("City");
@@ -177,10 +196,11 @@ function parseNordicMichelinSeeds(csv) {
       tags: starsToTags(stars),
       note: buildSeedNote(stars, get("Phone"), get("Notes")),
     };
-  });
+  })
+  );
 }
 
 window.RESTAURANT_SEED_LIST = {
-  id: "nordic-michelin-v3",
+  id: "nordic-michelin-v4",
   restaurants: parseNordicMichelinSeeds(NORDIC_MICHELIN_CSV),
 };
