@@ -186,6 +186,50 @@ textarea {
   padding: 12px;
 }
 
+.duplicate-group {
+  margin-bottom: 18px;
+}
+
+.duplicate-entry {
+  padding: 12px 0;
+  border-top: 0.5px solid var(--border);
+}
+
+.duplicate-entry:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.duplicate-entry-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.duplicate-entry-meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
+.duplicate-entry-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.duplicate-delete-btn {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.duplicate-merge-btn {
+  margin-top: 14px;
+}
+
+#share-restaurant-btn {
+  margin-top: 10px;
+}
+
 .city-filter-select {
   flex: 1;
   min-width: 0;

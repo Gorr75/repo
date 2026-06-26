@@ -1,6 +1,6 @@
 /* Tableside */
 
-const APP_VERSION = "v35";
+const APP_VERSION = "v36";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -193,7 +193,7 @@ const I18N = {
     viewDetails: "View Details",
     status: "Status",
     openInAppleMaps: "Open in Apple Maps",
-    mapHint: "Tap a pin for details. Pins are colored by restaurant status.",
+    mapHint: "Tap a pin for details. Pins are colored by restaurant status. Saved pins work offline.",
     seedWelcomeTitle: "Welcome to Tableside",
     seedWelcomeMsg:
       "Import a starter list of Nordic Michelin restaurants (names, cities, addresses, and star tags). You can delete any you don't need, or mark them Avoid later.",
@@ -207,6 +207,24 @@ const I18N = {
     seedStarterHint:
       "Add Nordic Michelin restaurants with cities, addresses, and tags. Your visits, staff, and personal notes stay yours.",
     seedImportStarter: "Import Nordic Michelin list",
+    duplicatesSection: "Duplicates",
+    duplicatesHint: "Find restaurants with the same name and city (e.g. after re-importing the starter list).",
+    findDuplicates: "Find duplicates",
+    duplicatesTitle: "Possible duplicates",
+    duplicatesNone: "No duplicates found.",
+    duplicatesGroup: "{name} · {city}",
+    duplicateKeepMerge: "Keep & merge",
+    duplicateDelete: "Delete",
+    mergeDuplicatesTitle: "Merge duplicates?",
+    mergeDuplicatesMsg: "Combine {n} entries into one. Visits, tags, staff, and links are merged.",
+    mergeDuplicatesConfirm: "Merge",
+    mergeDone: "Duplicates merged.",
+    share: "Share",
+    shareCopied: "Restaurant card copied to clipboard.",
+    shareFailed: "Could not share. Try again.",
+    mapCachedPins: "Showing {n} saved pins…",
+    mapGeocodingMore: "Looking up {n} more…",
+    mapOfflineHint: "Saved pin locations work offline. New addresses need internet once.",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -351,7 +369,7 @@ const I18N = {
     viewDetails: "Visa detaljer",
     status: "Status",
     openInAppleMaps: "Öppna i Apple Maps",
-    mapHint: "Tryck på en nål för detaljer. Färgerna visar restaurangstatus.",
+    mapHint: "Tryck på en nål för detaljer. Färger visar restaurangstatus. Sparade nålar fungerar offline.",
     seedWelcomeTitle: "Välkommen till Tableside",
     seedWelcomeMsg:
       "Importera en startlista med nordiska Michelin-restauranger (namn, städer, adresser och stjärntaggar). Du kan radera de du inte behöver, eller markera Undvik senare.",
@@ -365,6 +383,24 @@ const I18N = {
     seedStarterHint:
       "Lägg till nordiska Michelin-restauranger med städer, adresser och taggar. Dina besök, personal och egna anteckningar påverkas inte.",
     seedImportStarter: "Importera nordisk Michelin-lista",
+    duplicatesSection: "Dubbletter",
+    duplicatesHint: "Hitta restauranger med samma namn och stad (t.ex. efter omimport av startlistan).",
+    findDuplicates: "Hitta dubbletter",
+    duplicatesTitle: "Möjliga dubbletter",
+    duplicatesNone: "Inga dubbletter hittades.",
+    duplicatesGroup: "{name} · {city}",
+    duplicateKeepMerge: "Behåll & slå ihop",
+    duplicateDelete: "Radera",
+    mergeDuplicatesTitle: "Slå ihop dubbletter?",
+    mergeDuplicatesMsg: "Kombinera {n} poster till en. Besök, taggar, personal och länkar slås ihop.",
+    mergeDuplicatesConfirm: "Slå ihop",
+    mergeDone: "Dubbletter sammanslagna.",
+    share: "Dela",
+    shareCopied: "Restaurangkort kopierat till urklipp.",
+    shareFailed: "Kunde inte dela. Försök igen.",
+    mapCachedPins: "Visar {n} sparade nålar…",
+    mapGeocodingMore: "Slår upp {n} till…",
+    mapOfflineHint: "Sparade nålar fungerar offline. Nya adresser behöver internet en gång.",
   },
 };
 
@@ -538,6 +574,144 @@ function normalizeRestaurantName(name) {
     .trim()
     .replace(/\s*\/\s*/g, "/")
     .replace(/\s+/g, " ");
+}
+
+function duplicateGroupKey(r) {
+  const name = normalizeRestaurantName(r.name);
+  if (!name) return "";
+  const city = getRestaurantCity(r).toLowerCase();
+  const country = getRestaurantCountry(r).toLowerCase();
+  if (city) return `${name}|${city}|${country}`;
+  if (country) return `${name}|${country}`;
+  return name;
+}
+
+function findDuplicateGroups(restaurants) {
+  const groups = new Map();
+  for (const r of restaurants) {
+    const key = duplicateGroupKey(r);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return [...groups.values()].filter((group) => group.length > 1);
+}
+
+function restaurantCompletenessScore(r) {
+  let score = 0;
+  if (trim(r.address)) score += 4;
+  if (getRestaurantCity(r)) score += 1;
+  if (r.link) score += 1;
+  if (r.bookingUrl) score += 1;
+  if (r.instagram) score += 1;
+  if (r.note) score += 1;
+  if (r.image) score += 1;
+  score += (r.visits?.length || 0) * 2;
+  score += (r.tags?.length || 0);
+  if (r.pinned) score += 2;
+  if (r.lat != null) score += 2;
+  return score;
+}
+
+function pickPreferredRestaurant(restaurants) {
+  return [...restaurants].sort((a, b) => restaurantCompletenessScore(b) - restaurantCompletenessScore(a))[0];
+}
+
+function mergeField(preferred, other, key) {
+  const a = preferred[key];
+  const b = other[key];
+  if (typeof a === "string" && typeof b === "string") {
+    return trim(a).length >= trim(b).length ? a : b;
+  }
+  return a || b;
+}
+
+async function mergeRestaurants(keepId, removeId) {
+  const keep = await getRestaurant(keepId);
+  const remove = await getRestaurant(removeId);
+  if (!keep || !remove || keepId === removeId) return;
+
+  const mergedVisits = [...new Set([...(keep.visits || []), ...(remove.visits || [])])].sort((a, b) => b - a);
+  const mergedTags = [...new Set([...(keep.tags || []), ...(remove.tags || [])])];
+  const notes = [keep.note, remove.note].map((n) => trim(n)).filter(Boolean);
+
+  await saveRestaurant(
+    {
+      name: mergeField(keep, remove, "name"),
+      address: mergeField(keep, remove, "address"),
+      city: keep.city || remove.city,
+      country: keep.country || remove.country,
+      note: notes.join("\n\n"),
+      link: keep.link || remove.link,
+      bookingUrl: keep.bookingUrl || remove.bookingUrl,
+      instagram: keep.instagram || remove.instagram,
+      image: keep.image || remove.image,
+      status: keep.status || remove.status,
+      pinned: keep.pinned || remove.pinned,
+      tags: mergedTags,
+      visits: mergedVisits,
+      lastVisitedAt: Math.max(keep.lastVisitedAt || 0, remove.lastVisitedAt || 0) || null,
+      lat: keep.lat ?? remove.lat,
+      lng: keep.lng ?? remove.lng,
+      geocodeQuery: keep.geocodeQuery || remove.geocodeQuery,
+      geocodeLabel: keep.geocodeLabel || remove.geocodeLabel,
+    },
+    keepId
+  );
+
+  const staff = await getStaffForRestaurant(removeId);
+  for (const member of staff) {
+    await saveStaff(keepId, { restaurantId: keepId }, member.id);
+  }
+  await deleteRestaurant(removeId);
+}
+
+async function mergeDuplicateGroup(restaurants) {
+  const keep = pickPreferredRestaurant(restaurants);
+  const others = restaurants.filter((r) => r.id !== keep.id);
+  for (const other of others) {
+    await mergeRestaurants(keep.id, other.id);
+  }
+  return keep;
+}
+
+function buildRestaurantShareText(restaurant) {
+  const lines = [restaurant.name];
+  const location = restaurantLocationLine(restaurant);
+  if (location) lines.push(location);
+  const tags = (restaurant.tags || []).map((tag) => tagLabel(tag)).filter(Boolean);
+  if (tags.length) lines.push(tags.join(" · "));
+  if (restaurant.link) lines.push(restaurant.link);
+  if (restaurant.bookingUrl) lines.push(`${t("booking")}: ${restaurant.bookingUrl}`);
+  if (restaurant.instagram) lines.push(`Instagram: ${restaurant.instagram}`);
+  if (restaurant.note) lines.push(restaurant.note);
+  return lines.join("\n");
+}
+
+async function shareRestaurant(restaurant) {
+  const text = buildRestaurantShareText(restaurant);
+  const shareData = {
+    title: restaurant.name,
+    text,
+  };
+  const url = restaurant.link ? formatExternalUrl(restaurant.link) : restaurant.bookingUrl ? formatExternalUrl(restaurant.bookingUrl) : "";
+  if (url) shareData.url = url;
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    alert(t("shareCopied"));
+  } catch {
+    alert(t("shareFailed"));
+  }
 }
 
 function setHomeTab(next) {
@@ -1852,6 +2026,17 @@ function activeFiltersBannerMarkup() {
     </div>`;
 }
 
+function duplicatesSectionMarkup() {
+  return `
+    <div class="section settings-section">
+      <div class="section-title">${escapeHtml(t("duplicatesSection"))}</div>
+      <div class="card settings-card">
+        <p class="data-hint">${escapeHtml(t("duplicatesHint"))}</p>
+        <button class="btn btn-secondary full-width" id="find-duplicates-btn" type="button">${escapeHtml(t("findDuplicates"))}</button>
+      </div>
+    </div>`;
+}
+
 function versionBadge() {
   return `<span class="version-badge">${APP_VERSION}</span>`;
 }
@@ -2094,12 +2279,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function ensureRestaurantCoords(restaurant) {
+async function ensureRestaurantCoords(restaurant, { allowNetwork = true } = {}) {
   const cacheKey = mapGeocodeCacheKey(restaurant);
-  if (!cacheKey) return restaurant;
-  if (restaurant.lat != null && restaurant.lng != null && restaurant.geocodeQuery === cacheKey) {
-    return restaurant;
+  if (restaurant.lat != null && restaurant.lng != null) {
+    if (!cacheKey || restaurant.geocodeQuery === cacheKey) return restaurant;
+    if (!allowNetwork || !navigator.onLine) return restaurant;
   }
+  if (!cacheKey) return restaurant;
+  if (!allowNetwork || !navigator.onLine) return restaurant;
   try {
     const coords = await geocodeRestaurant(restaurant);
     if (!coords) return restaurant;
@@ -2153,6 +2340,30 @@ function homeTabsMarkup() {
     </nav>`;
 }
 
+function addMapMarker(restaurant, markers) {
+  if (restaurant.lat == null || restaurant.lng == null || !mapInstance) return;
+  const status = getRestaurantStatus(restaurant);
+  const marker = L.marker([restaurant.lat, restaurant.lng], { icon: createMapIcon(statusColor(status)) });
+  const popup = document.createElement("div");
+  popup.className = "map-callout";
+  popup.innerHTML = `
+    <div class="map-callout-name">${escapeHtml(restaurant.name)}</div>
+    ${restaurant.address ? `<div class="map-callout-address">${escapeHtml(restaurant.address)}</div>` : ""}
+    ${restaurant.geocodeLabel && restaurant.geocodeLabel !== restaurant.address ? `<div class="map-callout-geocode">${escapeHtml(restaurant.geocodeLabel)}</div>` : ""}
+    <div class="map-callout-visit">${escapeHtml(t("lastVisit"))}: ${escapeHtml(formatRelativeVisit(restaurant.lastVisitedAt))}</div>
+    <div class="map-callout-status"><span class="map-legend-dot" style="background:${statusColor(status)}"></span> ${escapeHtml(statusLabel(status))}</div>
+    <button type="button" class="btn btn-primary full-width map-details-btn">${escapeHtml(t("viewDetails"))}</button>
+    <a class="map-maps-link" href="${escapeHtml(appleMapsUrl(destinationQuery(restaurant)))}" target="_blank" rel="noopener noreferrer">${escapeHtml(t("openInAppleMaps"))}</a>
+  `;
+  popup.querySelector(".map-details-btn").addEventListener("click", () => {
+    mapInstance?.closePopup();
+    navigate({ view: "detail", id: restaurant.id });
+  });
+  marker.bindPopup(popup, { className: "map-popup", maxWidth: 260 });
+  marker.addTo(mapInstance);
+  markers.push(marker);
+}
+
 async function initRestaurantMap(restaurants) {
   if (typeof L === "undefined") return;
   const container = document.getElementById("restaurant-map");
@@ -2167,10 +2378,11 @@ async function initRestaurantMap(restaurants) {
 
   const loadingEl = document.getElementById("map-loading");
   const emptyEl = document.getElementById("map-empty");
-  const withQuery = restaurants.filter((r) => trim(r.address));
+  const withLocation = restaurants.filter((r) => trim(r.address) || getRestaurantCity(r));
   const markers = [];
+  const needsGeocode = [];
 
-  if (!withQuery.length) {
+  if (!withLocation.length) {
     if (loadingEl) loadingEl.hidden = true;
     if (emptyEl) {
       emptyEl.textContent = t("mapNoAddress");
@@ -2179,34 +2391,52 @@ async function initRestaurantMap(restaurants) {
     return;
   }
 
-  for (let i = 0; i < withQuery.length; i++) {
-    if (loadingEl) {
-      loadingEl.textContent = `${t("mapLoading")} (${i + 1}/${withQuery.length})`;
-    }
-    const r = await ensureRestaurantCoords(withQuery[i]);
+  for (const r of withLocation) {
     if (r.lat != null && r.lng != null) {
-      const status = getRestaurantStatus(r);
-      const marker = L.marker([r.lat, r.lng], { icon: createMapIcon(statusColor(status)) });
-      const popup = document.createElement("div");
-      popup.className = "map-callout";
-      popup.innerHTML = `
-        <div class="map-callout-name">${escapeHtml(r.name)}</div>
-        ${r.address ? `<div class="map-callout-address">${escapeHtml(r.address)}</div>` : ""}
-        ${r.geocodeLabel && r.geocodeLabel !== r.address ? `<div class="map-callout-geocode">${escapeHtml(r.geocodeLabel)}</div>` : ""}
-        <div class="map-callout-visit">${escapeHtml(t("lastVisit"))}: ${escapeHtml(formatRelativeVisit(r.lastVisitedAt))}</div>
-        <div class="map-callout-status"><span class="map-legend-dot" style="background:${statusColor(status)}"></span> ${escapeHtml(statusLabel(status))}</div>
-        <button type="button" class="btn btn-primary full-width map-details-btn">${escapeHtml(t("viewDetails"))}</button>
-        <a class="map-maps-link" href="${escapeHtml(appleMapsUrl(destinationQuery(r)))}" target="_blank" rel="noopener noreferrer">${escapeHtml(t("openInAppleMaps"))}</a>
-      `;
-      popup.querySelector(".map-details-btn").addEventListener("click", () => {
-        mapInstance?.closePopup();
-        navigate({ view: "detail", id: r.id });
-      });
-      marker.bindPopup(popup, { className: "map-popup", maxWidth: 260 });
-      marker.addTo(mapInstance);
-      markers.push(marker);
+      addMapMarker(r, markers);
+    } else {
+      needsGeocode.push(r);
     }
-    if (i < withQuery.length - 1) await sleep(1100);
+  }
+
+  if (markers.length && loadingEl) {
+    loadingEl.textContent = needsGeocode.length
+      ? t("mapCachedPins", { n: markers.length })
+      : t("mapLoading");
+  }
+
+  if (markers.length) {
+    mapInstance.fitBounds(L.featureGroup(markers).getBounds().pad(0.12));
+    setTimeout(() => mapInstance?.invalidateSize(), 100);
+  }
+
+  if (!needsGeocode.length) {
+    if (loadingEl) loadingEl.hidden = true;
+    if (!markers.length && emptyEl) {
+      emptyEl.textContent = t("mapNoLocations");
+      emptyEl.hidden = false;
+    } else if (emptyEl) {
+      emptyEl.hidden = true;
+    }
+    return;
+  }
+
+  if (!navigator.onLine) {
+    if (loadingEl) loadingEl.hidden = true;
+    if (!markers.length && emptyEl) {
+      emptyEl.textContent = t("mapNoLocations");
+      emptyEl.hidden = false;
+    }
+    return;
+  }
+
+  for (let i = 0; i < needsGeocode.length; i++) {
+    if (loadingEl) {
+      loadingEl.textContent = `${t("mapGeocodingMore", { n: needsGeocode.length - i })} (${i + 1}/${needsGeocode.length})`;
+    }
+    const updated = await ensureRestaurantCoords(needsGeocode[i]);
+    addMapMarker(updated, markers);
+    if (i < needsGeocode.length - 1) await sleep(1100);
   }
 
   if (loadingEl) loadingEl.hidden = true;
@@ -2259,6 +2489,9 @@ async function render() {
     case "settings":
       renderSettings();
       break;
+    case "duplicates":
+      await renderDuplicates();
+      break;
   }
 }
 
@@ -2281,6 +2514,7 @@ function renderSettings() {
         </div>
       </div>
       ${seedSectionMarkup()}
+      ${duplicatesSectionMarkup()}
       ${backupSectionMarkup(autoBackupMode)}
     </main>
   `;
@@ -2289,6 +2523,101 @@ function renderSettings() {
   bindLanguageControls();
   bindSeedControls();
   bindBackupControls({ onImportComplete: () => navigate({ view: "list" }) });
+  app.querySelector("#find-duplicates-btn")?.addEventListener("click", () => navigate({ view: "duplicates" }));
+}
+
+function duplicateSummaryLine(r) {
+  const parts = [];
+  if (restaurantLocationLine(r)) parts.push(restaurantLocationLine(r));
+  else if (restaurantListLocation(r)) parts.push(restaurantListLocation(r));
+  if (r.visits?.length) parts.push(`${r.visits.length} ${r.visits.length === 1 ? "visit" : "visits"}`);
+  if (r.tags?.length) parts.push(r.tags.map((tag) => tagLabel(tag)).join(", "));
+  return parts.filter(Boolean).join(" · ");
+}
+
+async function renderDuplicates() {
+  const restaurants = await getAllRestaurants();
+  const groups = findDuplicateGroups(restaurants);
+
+  app.innerHTML = `
+    <header class="header">
+      <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
+      <h1>${escapeHtml(t("duplicatesTitle"))} ${versionBadge()}</h1>
+    </header>
+    <main class="content">
+      ${
+        groups.length === 0
+          ? `
+        <div class="empty-state">
+          <div class="icon">✓</div>
+          <h2>${escapeHtml(t("duplicatesNone"))}</h2>
+        </div>`
+          : groups
+              .map((group) => {
+                const sample = group[0];
+                const cityLabel = getRestaurantCity(sample) || getRestaurantCountry(sample) || "";
+                return `
+        <div class="section duplicate-group">
+          <div class="section-title">${escapeHtml(t("duplicatesGroup", { name: sample.name, city: cityLabel }))}</div>
+          <div class="card duplicate-card">
+            ${group
+              .map(
+                (r) => `
+              <div class="duplicate-entry">
+                <div class="duplicate-entry-name">${escapeHtml(r.name)}</div>
+                <div class="duplicate-entry-meta">${escapeHtml(duplicateSummaryLine(r))}</div>
+                <div class="duplicate-entry-actions">
+                  <button type="button" class="btn btn-secondary duplicate-delete-btn" data-id="${escapeHtml(r.id)}">${escapeHtml(t("duplicateDelete"))}</button>
+                </div>
+              </div>`
+              )
+              .join("")}
+            <button type="button" class="btn btn-primary full-width duplicate-merge-btn" data-ids="${escapeHtml(group.map((r) => r.id).join(","))}">
+              ${escapeHtml(t("duplicateKeepMerge"))}
+            </button>
+          </div>
+        </div>`;
+              })
+              .join("")
+      }
+    </main>
+  `;
+
+  app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "settings" }));
+
+  app.querySelectorAll(".duplicate-merge-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ids = btn.dataset.ids.split(",").filter(Boolean);
+      confirmDelete(
+        t("mergeDuplicatesTitle"),
+        t("mergeDuplicatesMsg", { n: ids.length }),
+        async () => {
+          const group = await Promise.all(ids.map((id) => getRestaurant(id)));
+          const valid = group.filter(Boolean);
+          if (valid.length < 2) return;
+          await mergeDuplicateGroup(valid);
+          alert(t("mergeDone"));
+          await renderDuplicates();
+        },
+        t("mergeDuplicatesConfirm")
+      );
+    });
+  });
+
+  app.querySelectorAll(".duplicate-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const restaurant = await getRestaurant(btn.dataset.id);
+      if (!restaurant) return;
+      confirmDelete(
+        t("deleteRestaurantTitle", { name: restaurant.name }),
+        t("deleteRestaurantMsg"),
+        async () => {
+          await deleteRestaurant(restaurant.id);
+          await renderDuplicates();
+        }
+      );
+    });
+  });
 }
 
 async function renderList() {
@@ -2627,6 +2956,7 @@ async function renderDetail(id) {
         <button type="button" class="pin-btn pin-btn-large ${restaurant.pinned ? "pinned" : ""}" id="toggle-pin-btn" aria-label="${escapeHtml(restaurant.pinned ? t("unpin") : t("pin"))}">
           ★ ${escapeHtml(restaurant.pinned ? t("pinned") : t("pin"))}
         </button>
+        <button type="button" class="btn btn-secondary full-width" id="share-restaurant-btn">${escapeHtml(t("share"))}</button>
       </div>
 
       <div class="section">
@@ -2712,6 +3042,7 @@ async function renderDetail(id) {
     await toggleRestaurantPinned(id);
     await renderDetail(id);
   });
+  app.querySelector("#share-restaurant-btn")?.addEventListener("click", () => shareRestaurant(restaurant));
   app.querySelector("#edit-restaurant-btn").addEventListener("click", () => navigate({ view: "edit-restaurant", id }));
   app.querySelector("#add-staff-btn").addEventListener("click", () => navigate({ view: "add-staff", restaurantId: id }));
   app.querySelector("#log-visit-btn").addEventListener("click", async () => {
