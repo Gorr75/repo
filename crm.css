@@ -37,19 +37,28 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  overflow: hidden;
 }
 
 #app {
-  min-height: 100%;
+  height: 100%;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   padding-top: var(--safe-top);
-  padding-bottom: var(--safe-bottom);
+  overflow: hidden;
+}
+
+#app.has-home-tabs {
+  padding-bottom: 0;
 }
 
 #app .content {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 #app .content-map {
@@ -105,14 +114,42 @@ textarea {
 }
 
 .header h1 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.app-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-title-name {
   font-size: 1.05rem;
   font-weight: 600;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
   letter-spacing: -0.02em;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header .version-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  line-height: 1.2;
 }
 
 .version-badge {
@@ -321,7 +358,11 @@ textarea {
 
 .content {
   flex: 1;
-  padding: 16px 16px 32px;
+  padding: 16px 16px 24px;
+}
+
+.detail-content {
+  padding-top: 12px;
 }
 
 .empty-state {
@@ -1420,10 +1461,13 @@ textarea {
 
 .home-tabs {
   display: flex;
-  border-top: 0.5px solid var(--border);
-  background: var(--bg-elevated);
-  padding-bottom: var(--safe-bottom);
   flex-shrink: 0;
+  border-top: 0.5px solid var(--border);
+  background: rgba(28, 28, 30, 0.96);
+  backdrop-filter: blur(20px);
+  padding-bottom: var(--safe-bottom);
+  z-index: 30;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35);
 }
 
 .home-tab {
@@ -1432,7 +1476,8 @@ textarea {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
+  min-height: 56px;
   padding: 8px 4px 10px;
   color: var(--text-tertiary);
   font-size: 0.68rem;
@@ -1443,13 +1488,20 @@ textarea {
   color: var(--accent);
 }
 
-.home-tab-icon {
-  font-size: 1.2rem;
-  line-height: 1;
+.home-tab.active .tab-icon-svg {
+  transform: scale(1.05);
+}
+
+.tab-icon-svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .home-tab-label {
   letter-spacing: 0.01em;
+  line-height: 1.1;
 }
 
 .status-dot {

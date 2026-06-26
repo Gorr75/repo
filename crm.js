@@ -1,6 +1,6 @@
 /* Tableside */
 
-const APP_VERSION = "v36";
+const APP_VERSION = "v37";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -1731,6 +1731,33 @@ function navigate(next) {
   render();
 }
 
+function scrollToTop() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  app.querySelector(".content")?.scrollTo(0, 0);
+}
+
+function appTitleMarkup({ title = APP_NAME, showVersion = true } = {}) {
+  return `
+    <div class="app-title-block">
+      <span class="app-title-name">${escapeHtml(title)}</span>
+      ${showVersion ? `<span class="version-badge">${APP_VERSION}</span>` : ""}
+    </div>`;
+}
+
+function tabIconSvg(kind) {
+  const paths = {
+    restaurants:
+      '<path d="M7 2v8a3 3 0 006 0V2M5 2h4M13 2h4M5 22h14M12 14v8M10 18h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    staff:
+      '<path d="M12 12a4 4 0 100-8 4 4 0 000 8zM5 21a7 7 0 0114 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    map:
+      '<path d="M9 4l-6 3v14l6-3 6 3 6-3V4l-6 3-6-3zM9 4v14M15 7v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  };
+  return `<svg class="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">${paths[kind] || ""}</svg>`;
+}
+
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
@@ -2326,15 +2353,15 @@ function homeTabsMarkup() {
   return `
     <nav class="home-tabs" aria-label="Main">
       <button type="button" class="home-tab ${homeTab === "restaurants" ? "active" : ""}" data-home-tab="restaurants">
-        <span class="home-tab-icon" aria-hidden="true">🍽</span>
+        ${tabIconSvg("restaurants")}
         <span class="home-tab-label">${escapeHtml(t("searchModeRestaurants"))}</span>
       </button>
       <button type="button" class="home-tab ${homeTab === "staff" ? "active" : ""}" data-home-tab="staff">
-        <span class="home-tab-icon" aria-hidden="true">👤</span>
+        ${tabIconSvg("staff")}
         <span class="home-tab-label">${escapeHtml(t("searchModeStaff"))}</span>
       </button>
       <button type="button" class="home-tab ${homeTab === "map" ? "active" : ""}" data-home-tab="map">
-        <span class="home-tab-icon" aria-hidden="true">🗺</span>
+        ${tabIconSvg("map")}
         <span class="home-tab-label">${escapeHtml(t("tabMap"))}</span>
       </button>
     </nav>`;
@@ -2467,6 +2494,7 @@ if (!window._swipeDocBound) {
 }
 
 async function render() {
+  app.className = route.view === "list" ? "has-home-tabs" : "";
   switch (route.view) {
     case "list":
       await renderList();
@@ -2493,6 +2521,7 @@ async function render() {
       await renderDuplicates();
       break;
   }
+  if (route.view !== "list") scrollToTop();
 }
 
 function renderSettings() {
@@ -2501,7 +2530,7 @@ function renderSettings() {
   app.innerHTML = `
     <header class="header">
       <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
-      <h1>${escapeHtml(t("settings"))} ${versionBadge()}</h1>
+      <h1>${appTitleMarkup({ title: t("settings") })}</h1>
     </header>
     <main class="content">
       <div class="section settings-section">
@@ -2542,7 +2571,7 @@ async function renderDuplicates() {
   app.innerHTML = `
     <header class="header">
       <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
-      <h1>${escapeHtml(t("duplicatesTitle"))} ${versionBadge()}</h1>
+      <h1>${appTitleMarkup({ title: t("duplicatesTitle") })}</h1>
     </header>
     <main class="content">
       ${
@@ -2787,7 +2816,7 @@ async function renderList() {
 
   app.innerHTML = `
     <header class="header">
-      <h1>${APP_NAME} ${versionBadge()}</h1>
+      <h1>${appTitleMarkup()}</h1>
       <div class="header-actions">
         <button class="icon-btn icon-btn-ghost" id="settings-btn" type="button" aria-label="${escapeHtml(t("settings"))}">⚙</button>
         ${homeTab === "restaurants" ? `<button class="icon-btn" id="add-btn" type="button" aria-label="${escapeHtml(t("addRestaurant"))}">+</button>` : ""}
@@ -2943,11 +2972,11 @@ async function renderDetail(id) {
   const sortedVisits = [...restaurant.visits].sort((a, b) => b - a);
 
   app.innerHTML = `
-    <header class="header header-minimal">
+    <header class="header">
       <button class="back-btn" id="back-btn" type="button" aria-label="${escapeHtml(t("back"))}">‹</button>
-      <h1>${versionBadge()}</h1>
+      <h1>${appTitleMarkup({ title: restaurant.name, showVersion: false })}</h1>
     </header>
-    <main class="content">
+    <main class="content detail-content">
       <div class="detail-hero">
         ${renderRestaurantThumb(restaurant.image, "detail-photo")}
         <h2 class="detail-title">${escapeHtml(restaurant.name)}</h2>
@@ -3132,7 +3161,7 @@ async function renderRestaurantForm(editId) {
   app.innerHTML = `
     <header class="header">
       <button class="back-btn" id="cancel-btn" type="button" aria-label="${escapeHtml(t("cancel"))}">‹</button>
-      <h1>${isEdit ? escapeHtml(t("editRestaurant")) : escapeHtml(t("newRestaurant"))} ${versionBadge()}</h1>
+      <h1>${appTitleMarkup({ title: isEdit ? t("editRestaurant") : t("newRestaurant"), showVersion: false })}</h1>
     </header>
     <main class="content">
       <form class="form" id="restaurant-form">
@@ -3288,7 +3317,7 @@ async function renderStaffForm(restaurantId, editStaffId) {
   app.innerHTML = `
     <header class="header">
       <button class="back-btn" id="cancel-btn" type="button" aria-label="${escapeHtml(t("cancel"))}">‹</button>
-      <h1>${isEdit ? escapeHtml(t("editStaff")) : escapeHtml(t("newStaff"))} ${versionBadge()}</h1>
+      <h1>${appTitleMarkup({ title: isEdit ? t("editStaff") : t("newStaff"), showVersion: false })}</h1>
     </header>
     <main class="content">
       <form class="form" id="staff-form">
