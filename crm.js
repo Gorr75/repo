@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v32";
+const APP_VERSION = "v33";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -174,6 +174,7 @@ const I18N = {
     noInstagram: "No Instagram",
     openLink: "Open link",
     clearTagFilters: "Clear filters",
+    clearAllFilters: "Clear all filters",
     filterByCity: "City",
     allCities: "All cities",
     city: "City",
@@ -331,6 +332,7 @@ const I18N = {
     noInstagram: "Ingen Instagram",
     openLink: "Öppna länk",
     clearTagFilters: "Rensa filter",
+    clearAllFilters: "Rensa alla filter",
     filterByCity: "Stad",
     allCities: "Alla städer",
     city: "Stad",
@@ -442,6 +444,30 @@ function clearListTagFilters() {
   listTagFilters = [];
   saveTagFilters();
   renderList();
+}
+
+function hasActiveListFilters() {
+  return !!trim(listSearch) || listTagFilters.length > 0 || !!listCityFilter;
+}
+
+function clearAllListFilters() {
+  listSearch = "";
+  listTagFilters = [];
+  saveTagFilters();
+  listCityFilter = "";
+  localStorage.removeItem(CITY_FILTER_KEY);
+  renderList();
+}
+
+function sanitizeCityFilter(restaurants) {
+  if (!listCityFilter) return;
+  const valid = collectUsedCities(restaurants).some(
+    (entry) => `${entry.city}|${entry.country}` === listCityFilter
+  );
+  if (!valid) {
+    listCityFilter = "";
+    localStorage.removeItem(CITY_FILTER_KEY);
+  }
 }
 
 function setListCityFilter(value) {
@@ -1762,19 +1788,30 @@ function showNavigationPicker(restaurant) {
 }
 
 function cityFilterMarkup(cities) {
-  if (!cities.length) return "";
+  if (!cities.length && !listCityFilter) return "";
+  const options = cities
+    .map((entry) => {
+      const value = `${entry.city}|${entry.country}`;
+      return `<option value="${escapeHtml(value)}" ${listCityFilter === value ? "selected" : ""}>${escapeHtml(cityFilterLabel(entry))}</option>`;
+    })
+    .join("");
+
   return `
     <div class="city-filter-row">
       <label class="sort-label" for="city-filter">${escapeHtml(t("filterByCity"))}</label>
       <select id="city-filter" class="city-filter-select" aria-label="${escapeHtml(t("filterByCity"))}">
-        <option value="">${escapeHtml(t("allCities"))}</option>
-        ${cities
-          .map((entry) => {
-            const value = `${entry.city}|${entry.country}`;
-            return `<option value="${escapeHtml(value)}" ${listCityFilter === value ? "selected" : ""}>${escapeHtml(cityFilterLabel(entry))}</option>`;
-          })
-          .join("")}
+        <option value="" ${listCityFilter === "" ? "selected" : ""}>${escapeHtml(t("allCities"))}</option>
+        ${options}
       </select>
+      ${listCityFilter ? `<button type="button" class="btn-text tag-clear-btn" id="clear-city-filter">${escapeHtml(t("allCities"))}</button>` : ""}
+    </div>`;
+}
+
+function activeFiltersBannerMarkup() {
+  if (!hasActiveListFilters()) return "";
+  return `
+    <div class="active-filters-banner">
+      <button type="button" class="btn btn-secondary full-width" id="clear-all-filters">${escapeHtml(t("clearAllFilters"))}</button>
     </div>`;
 }
 
@@ -2312,6 +2349,7 @@ async function renderList() {
         </ul>
         <p class="swipe-hint">${escapeHtml(t("swipeDeleteStaff"))}</p>`;
   } else {
+    sanitizeCityFilter(allRestaurants);
     const restaurants = sortRestaurants(allRestaurants, listSort);
     let filtered = restaurants.filter((r) => restaurantMatchesSearch(r, query));
     filtered = filtered.filter((r) => restaurantMatchesTagFilters(r));
@@ -2320,8 +2358,9 @@ async function renderList() {
     const usedCities = collectUsedCities(allRestaurants);
     const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
 
-    const tagFilterHtml = usedTags.length
-      ? `
+    const tagFilterHtml =
+      usedTags.length || listTagFilters.length
+        ? `
       <div class="tag-filter-row">
         <div class="tag-filter-header">
           <span class="sort-label">${escapeHtml(t("filterByTag"))}</span>
@@ -2336,14 +2375,17 @@ async function renderList() {
             .join("")}
         </div>
       </div>`
-      : "";
+        : "";
 
     const cityFilterHtml = cityFilterMarkup(usedCities);
+    const filtersBannerHtml = activeFiltersBannerMarkup();
 
     listBodyHtml =
       filtered.length === 0
         ? `
         ${cityFilterHtml}
+        ${tagFilterHtml}
+        ${filtersBannerHtml}
         <div class="empty-state">
           <div class="icon">🍽️</div>
           <h2>${allRestaurants.length === 0 ? escapeHtml(t("noRestaurants")) : escapeHtml(t("noMatches"))}</h2>
@@ -2352,6 +2394,7 @@ async function renderList() {
         : `
         ${cityFilterHtml}
         ${tagFilterHtml}
+        ${filtersBannerHtml}
         <ul class="list">
           ${filtered
             .map(
@@ -2435,6 +2478,10 @@ async function renderList() {
   });
 
   app.querySelector("#clear-tag-filters")?.addEventListener("click", clearListTagFilters);
+
+  app.querySelector("#clear-city-filter")?.addEventListener("click", () => setListCityFilter(""));
+
+  app.querySelector("#clear-all-filters")?.addEventListener("click", clearAllListFilters);
 
   app.querySelector("#city-filter")?.addEventListener("change", (e) => setListCityFilter(e.target.value));
 

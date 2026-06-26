@@ -175,6 +175,15 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.active-filters-banner {
+  margin-bottom: 14px;
+}
+
+.active-filters-banner .btn {
+  padding: 12px;
 }
 
 .city-filter-select {
