@@ -1,6 +1,6 @@
 /* Tableside */
 
-const APP_VERSION = "v37";
+const APP_VERSION = "v38";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -2386,7 +2386,12 @@ function addMapMarker(restaurant, markers) {
     mapInstance?.closePopup();
     navigate({ view: "detail", id: restaurant.id });
   });
-  marker.bindPopup(popup, { className: "map-popup", maxWidth: 260 });
+  marker.bindPopup(popup, {
+    className: "map-popup",
+    maxWidth: 260,
+    autoPanPaddingTopLeft: L.point(12, 12),
+    autoPanPaddingBottomRight: L.point(52, 12),
+  });
   marker.addTo(mapInstance);
   markers.push(marker);
 }
@@ -2397,7 +2402,8 @@ async function initRestaurantMap(restaurants) {
   if (!container) return;
 
   destroyMap();
-  mapInstance = L.map(container, { zoomControl: true }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+  mapInstance = L.map(container, { zoomControl: false }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+  L.control.zoom({ position: "topright" }).addTo(mapInstance);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap",
     maxZoom: 19,

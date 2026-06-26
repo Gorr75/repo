@@ -1631,8 +1631,22 @@ textarea {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+.leaflet-container {
+  background: #1c1c1e;
+  font-family: inherit;
+}
+
+.restaurant-map .leaflet-top.leaflet-right .leaflet-control {
+  margin-top: 10px;
+  margin-right: 10px;
+}
+
+.restaurant-map .leaflet-popup {
+  margin-left: 8px;
+}
+
 .map-popup .leaflet-popup-content {
-  margin: 12px 14px;
+  margin: 12px 14px 12px 18px;
 }
 
 .map-popup .leaflet-popup-tip {
@@ -1643,6 +1657,7 @@ textarea {
   font-weight: 700;
   font-size: 1rem;
   margin-bottom: 6px;
+  padding-left: 10px;
 }
 
 .map-callout-address {
@@ -1685,9 +1700,4 @@ textarea {
   font-size: 0.85rem;
   color: var(--accent);
   text-decoration: none;
-}
-
-.leaflet-container {
-  background: #1c1c1e;
-  font-family: inherit;
 }
