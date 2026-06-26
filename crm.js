@@ -1,7 +1,9 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v22";
+const APP_VERSION = "v30";
 const GEOCODE_CACHE_VERSION = "v2";
+const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
+const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
 const STAFF_SORT_KEY = "restaurant-crm-staff-sort";
 const STAFF_ROLE_FILTER_KEY = "restaurant-crm-staff-role-filter";
 const APP_NAME = "Restaurant CRM";
@@ -178,6 +180,17 @@ const I18N = {
     status: "Status",
     openInAppleMaps: "Open in Apple Maps",
     mapHint: "Tap a pin for details. Pins are colored by restaurant status.",
+    seedWelcomeTitle: "Welcome to Restaurant CRM",
+    seedWelcomeMsg:
+      "Import a starter list of 30 fine-dining restaurants (names, addresses, and Michelin tags only). You can delete any you don't need, or mark them Avoid later.",
+    seedImportBtn: "Import starter list",
+    seedSkipBtn: "Start empty",
+    seedImportDone: "Added {n} restaurants. Swipe left on a restaurant to delete any you don't need.",
+    seedImportNone: "All starter restaurants are already in your list.",
+    seedStarterSection: "Starter list",
+    seedStarterHint:
+      "Add popular fine-dining restaurants with addresses and tags. Your visits, staff, and personal notes stay yours.",
+    seedImportStarter: "Import fine-dining starters",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -310,6 +323,17 @@ const I18N = {
     status: "Status",
     openInAppleMaps: "Öppna i Apple Maps",
     mapHint: "Tryck på en nål för detaljer. Färgerna visar restaurangstatus.",
+    seedWelcomeTitle: "Välkommen till Restaurant CRM",
+    seedWelcomeMsg:
+      "Importera en startlista med 30 fine dining-restauranger (namn, adresser och Michelin-taggar). Du kan radera de du inte behöver, eller markera Undvik senare.",
+    seedImportBtn: "Importera startlista",
+    seedSkipBtn: "Börja tomt",
+    seedImportDone: "Lade till {n} restauranger. Svep vänster på en restaurang för att radera.",
+    seedImportNone: "Alla startrestauranger finns redan i din lista.",
+    seedStarterSection: "Startlista",
+    seedStarterHint:
+      "Lägg till populära fine dining-restauranger med adresser och taggar. Dina besök, personal och egna anteckningar påverkas inte.",
+    seedImportStarter: "Importera fine dining-startlista",
   },
 };
 
@@ -1107,6 +1131,133 @@ async function importAllData(file) {
   });
 }
 
+function getSeedRestaurants() {
+  return window.RESTAURANT_SEED_LIST?.restaurants || [];
+}
+
+function restaurantMatchKey(restaurant) {
+  return `${(restaurant.name || "").toLowerCase().trim()}|${(restaurant.address || "").toLowerCase().trim()}`;
+}
+
+async function importSeedRestaurants() {
+  const seeds = getSeedRestaurants();
+  if (!seeds.length) return 0;
+
+  const existing = await getAllRestaurants();
+  const existingKeys = new Set(existing.map(restaurantMatchKey));
+  let added = 0;
+
+  for (const seed of seeds) {
+    const key = restaurantMatchKey(seed);
+    if (existingKeys.has(key)) continue;
+    await saveRestaurant({
+      name: seed.name,
+      address: seed.address,
+      note: seed.note || "",
+      tags: seed.tags || [],
+      status: "want-to-try",
+    });
+    existingKeys.add(key);
+    added++;
+  }
+
+  if (window.RESTAURANT_SEED_LIST?.id) {
+    localStorage.setItem(SEED_IMPORTED_ID_KEY, window.RESTAURANT_SEED_LIST.id);
+  }
+  return added;
+}
+
+function markSeedPromptHandled(reason) {
+  localStorage.setItem(SEED_PROMPT_KEY, reason);
+}
+
+function showSeedWelcomeModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>${escapeHtml(t("seedWelcomeTitle"))}</h2>
+      <p class="modal-text">${escapeHtml(t("seedWelcomeMsg"))}</p>
+      <div class="nav-actions">
+        <button class="btn btn-primary full-width nav-btn" id="seed-import" type="button">${escapeHtml(t("seedImportBtn"))}</button>
+        <button class="btn btn-secondary full-width nav-btn" id="seed-skip" type="button">${escapeHtml(t("seedSkipBtn"))}</button>
+      </div>
+    </div>
+  `;
+
+  const modal = overlay.querySelector(".modal");
+
+  function close() {
+    overlay.remove();
+    document.body.style.overflow = "";
+  }
+
+  document.body.style.overflow = "hidden";
+  document.body.appendChild(overlay);
+  modal.addEventListener("click", (e) => e.stopPropagation());
+
+  overlay.querySelector("#seed-skip").addEventListener("click", () => {
+    markSeedPromptHandled("declined");
+    close();
+  });
+
+  overlay.querySelector("#seed-import").addEventListener("click", async () => {
+    const importBtn = overlay.querySelector("#seed-import");
+    importBtn.disabled = true;
+    try {
+      const added = await importSeedRestaurants();
+      markSeedPromptHandled("imported");
+      close();
+      alert(added > 0 ? t("seedImportDone", { n: added }) : t("seedImportNone"));
+      await renderList();
+    } catch (err) {
+      importBtn.disabled = false;
+      console.error(err);
+      alert(t("importFailed"));
+    }
+  });
+}
+
+async function maybeShowSeedWelcome() {
+  if (localStorage.getItem(SEED_PROMPT_KEY)) return;
+  if (route.view !== "list" || homeTab !== "restaurants") return;
+  const restaurants = await getAllRestaurants();
+  if (restaurants.length > 0) {
+    markSeedPromptHandled("has-data");
+    return;
+  }
+  showSeedWelcomeModal();
+}
+
+function seedSectionMarkup() {
+  if (!getSeedRestaurants().length) return "";
+  return `
+    <div class="section settings-section">
+      <div class="section-title">${escapeHtml(t("seedStarterSection"))}</div>
+      <div class="card settings-card">
+        <p class="data-hint">${escapeHtml(t("seedStarterHint"))}</p>
+        <button class="btn btn-secondary full-width" id="seed-import-btn" type="button">${escapeHtml(t("seedImportStarter"))}</button>
+      </div>
+    </div>`;
+}
+
+function bindSeedControls() {
+  app.querySelector("#seed-import-btn")?.addEventListener("click", async () => {
+    const btn = app.querySelector("#seed-import-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const added = await importSeedRestaurants();
+      markSeedPromptHandled("imported-settings");
+      alert(added > 0 ? t("seedImportDone", { n: added }) : t("seedImportNone"));
+      navigate({ view: "list" });
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      console.error(err);
+      alert(t("importFailed"));
+    }
+  });
+}
+
 async function getStaffCount(restaurantId) {
   const db = await openDatabase();
   return dbRequest(
@@ -1173,8 +1324,37 @@ function normalizeAddressForGeocode(address) {
   const raw = trim(address || "");
   if (!raw) return "";
   const lower = raw.toLowerCase();
-  if (lower.includes("sverige") || lower.includes("sweden")) return raw;
+  if (
+    lower.includes("sverige") ||
+    lower.includes("sweden") ||
+    lower.includes("denmark") ||
+    lower.includes("norway") ||
+    lower.includes("italy") ||
+    lower.includes("united arab emirates") ||
+    lower.includes("dubai")
+  ) {
+    return raw;
+  }
   return `${raw}, Sverige`;
+}
+
+function geocodeCountryCodes(address) {
+  const lower = (address || "").toLowerCase();
+  if (lower.includes("united arab emirates") || lower.includes("dubai")) return "ae";
+  if (lower.includes("denmark") || lower.includes("copenhagen") || lower.includes("gentofte")) return "dk";
+  if (lower.includes("norway") || lower.includes("oslo")) return "no";
+  if (lower.includes("italy") || lower.includes("rome")) return "it";
+  if (lower.includes("sverige") || lower.includes("sweden") || lower.includes("stockholm")) return "se";
+  return "";
+}
+
+function geocodeBiasCenter(address) {
+  const lower = (address || "").toLowerCase();
+  if (lower.includes("dubai") || lower.includes("united arab emirates")) return [25.2048, 55.2708];
+  if (lower.includes("copenhagen") || lower.includes("denmark")) return [55.6761, 12.5683];
+  if (lower.includes("oslo") || lower.includes("norway")) return [59.9139, 10.7522];
+  if (lower.includes("rome") || lower.includes("italy")) return [41.9028, 12.4964];
+  return DEFAULT_MAP_CENTER;
 }
 
 function mapGeocodeCacheKey(restaurant) {
@@ -1225,14 +1405,15 @@ function pickBestGeocodeResult(results, query) {
   };
 }
 
-async function geocodeWithNominatim(query) {
+async function geocodeWithNominatim(query, addressContext = query) {
   const params = new URLSearchParams({
     format: "json",
     limit: "8",
     addressdetails: "1",
-    countrycodes: "se",
     q: query,
   });
+  const countrycodes = geocodeCountryCodes(addressContext);
+  if (countrycodes) params.set("countrycodes", countrycodes);
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
     headers: {
       Accept: "application/json",
@@ -1244,12 +1425,13 @@ async function geocodeWithNominatim(query) {
   return pickBestGeocodeResult(results, query);
 }
 
-async function geocodeWithPhoton(query) {
+async function geocodeWithPhoton(query, addressContext = query) {
+  const [lat, lon] = geocodeBiasCenter(addressContext);
   const params = new URLSearchParams({
     q: query,
     limit: "8",
-    lat: String(DEFAULT_MAP_CENTER[0]),
-    lon: String(DEFAULT_MAP_CENTER[1]),
+    lat: String(lat),
+    lon: String(lon),
   });
   const response = await fetch(`https://photon.komoot.io/api/?${params}`);
   if (!response.ok) return null;
@@ -1271,19 +1453,19 @@ async function geocodeWithPhoton(query) {
   return pickBestGeocodeResult(nominatimLike, query);
 }
 
-async function geocodeAddress(query) {
+async function geocodeAddress(query, addressContext = query) {
   const normalized = trim(query);
   if (!normalized) return null;
 
   try {
-    const coords = await geocodeWithNominatim(normalized);
+    const coords = await geocodeWithNominatim(normalized, addressContext);
     if (coords) return coords;
   } catch (err) {
     console.warn("Nominatim geocoding failed", err);
   }
 
   try {
-    const coords = await geocodeWithPhoton(normalized);
+    const coords = await geocodeWithPhoton(normalized, addressContext);
     if (coords) return coords;
   } catch (err) {
     console.warn("Photon geocoding failed", err);
@@ -1296,9 +1478,9 @@ async function geocodeRestaurant(restaurant) {
   const addressQuery = normalizeAddressForGeocode(restaurant.address);
   if (!addressQuery) return null;
 
-  let coords = await geocodeAddress(addressQuery);
+  let coords = await geocodeAddress(addressQuery, restaurant.address || addressQuery);
   if (!coords && restaurant.name) {
-    coords = await geocodeAddress(`${restaurant.name}, ${addressQuery}`);
+    coords = await geocodeAddress(`${restaurant.name}, ${addressQuery}`, restaurant.address || addressQuery);
   }
   return coords;
 }
@@ -1808,12 +1990,14 @@ function renderSettings() {
           </div>
         </div>
       </div>
+      ${seedSectionMarkup()}
       ${backupSectionMarkup(autoBackupMode)}
     </main>
   `;
 
   app.querySelector("#back-btn").addEventListener("click", () => navigate({ view: "list" }));
   bindLanguageControls();
+  bindSeedControls();
   bindBackupControls({ onImportComplete: () => navigate({ view: "list" }) });
 }
 
@@ -2104,6 +2288,10 @@ async function renderList() {
 
   if (shouldShowBackupReminder()) {
     showBackupReminder();
+  }
+
+  if (!isStaffMode && !isMapMode) {
+    await maybeShowSeedWelcome();
   }
 }
 
