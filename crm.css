@@ -169,6 +169,45 @@ textarea {
   margin-bottom: 14px;
 }
 
+.city-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.city-filter-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 68%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  appearance: none;
+}
+
+.field-split {
+  display: flex;
+  gap: 12px;
+}
+
+.field-half {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-half label {
+  display: block;
+}
+
+.field-half input {
+  width: 100%;
+}
+
 .sort-label {
   font-size: 0.78rem;
   font-weight: 600;

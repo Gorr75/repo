@@ -1,6 +1,6 @@
 /* Restaurant CRM */
 
-const APP_VERSION = "v30";
+const APP_VERSION = "v31";
 const GEOCODE_CACHE_VERSION = "v2";
 const SEED_PROMPT_KEY = "restaurant-crm-seed-prompted";
 const SEED_IMPORTED_ID_KEY = "restaurant-crm-seed-imported";
@@ -11,6 +11,7 @@ const SWIPE_DELETE_WIDTH = 80;
 const LANG_KEY = "restaurant-crm-lang";
 const SORT_KEY = "restaurant-crm-sort";
 const TAG_FILTER_KEY = "restaurant-crm-tag-filter";
+const CITY_FILTER_KEY = "restaurant-crm-city-filter";
 const HOME_TAB_KEY = "restaurant-crm-home-tab";
 const LAST_EXPORT_KEY = "restaurant-crm-last-export";
 const LAST_AUTO_EXPORT_KEY = "restaurant-crm-last-auto-export";
@@ -167,6 +168,12 @@ const I18N = {
     noLink: "No link",
     openLink: "Open link",
     clearTagFilters: "Clear filters",
+    filterByCity: "City",
+    allCities: "All cities",
+    city: "City",
+    country: "Country",
+    cityPlaceholder: "Stockholm",
+    countryPlaceholder: "Sweden",
     settings: "Settings",
     language: "Language",
     langEnglish: "English",
@@ -182,15 +189,15 @@ const I18N = {
     mapHint: "Tap a pin for details. Pins are colored by restaurant status.",
     seedWelcomeTitle: "Welcome to Restaurant CRM",
     seedWelcomeMsg:
-      "Import a starter list of 30 fine-dining restaurants (names, addresses, and Michelin tags only). You can delete any you don't need, or mark them Avoid later.",
+      "Import a starter list of Nordic Michelin restaurants (names, cities, addresses, and star tags). You can delete any you don't need, or mark them Avoid later.",
     seedImportBtn: "Import starter list",
     seedSkipBtn: "Start empty",
     seedImportDone: "Added {n} restaurants. Swipe left on a restaurant to delete any you don't need.",
     seedImportNone: "All starter restaurants are already in your list.",
     seedStarterSection: "Starter list",
     seedStarterHint:
-      "Add popular fine-dining restaurants with addresses and tags. Your visits, staff, and personal notes stay yours.",
-    seedImportStarter: "Import fine-dining starters",
+      "Add Nordic Michelin restaurants with cities, addresses, and tags. Your visits, staff, and personal notes stay yours.",
+    seedImportStarter: "Import Nordic Michelin list",
   },
   sv: {
     addRestaurant: "Lägg till restaurang",
@@ -310,6 +317,12 @@ const I18N = {
     noLink: "Ingen länk",
     openLink: "Öppna länk",
     clearTagFilters: "Rensa filter",
+    filterByCity: "Stad",
+    allCities: "Alla städer",
+    city: "Stad",
+    country: "Land",
+    cityPlaceholder: "Stockholm",
+    countryPlaceholder: "Sverige",
     settings: "Inställningar",
     language: "Språk",
     langEnglish: "English",
@@ -325,15 +338,15 @@ const I18N = {
     mapHint: "Tryck på en nål för detaljer. Färgerna visar restaurangstatus.",
     seedWelcomeTitle: "Välkommen till Restaurant CRM",
     seedWelcomeMsg:
-      "Importera en startlista med 30 fine dining-restauranger (namn, adresser och Michelin-taggar). Du kan radera de du inte behöver, eller markera Undvik senare.",
+      "Importera en startlista med nordiska Michelin-restauranger (namn, städer, adresser och stjärntaggar). Du kan radera de du inte behöver, eller markera Undvik senare.",
     seedImportBtn: "Importera startlista",
     seedSkipBtn: "Börja tomt",
     seedImportDone: "Lade till {n} restauranger. Svep vänster på en restaurang för att radera.",
     seedImportNone: "Alla startrestauranger finns redan i din lista.",
     seedStarterSection: "Startlista",
     seedStarterHint:
-      "Lägg till populära fine dining-restauranger med adresser och taggar. Dina besök, personal och egna anteckningar påverkas inte.",
-    seedImportStarter: "Importera fine dining-startlista",
+      "Lägg till nordiska Michelin-restauranger med städer, adresser och taggar. Dina besök, personal och egna anteckningar påverkas inte.",
+    seedImportStarter: "Importera nordisk Michelin-lista",
   },
 };
 
@@ -344,6 +357,7 @@ if (homeTab !== "restaurants" && homeTab !== "staff" && homeTab !== "map") homeT
 let staffSort = localStorage.getItem(STAFF_SORT_KEY) || "name";
 let staffRoleFilter = localStorage.getItem(STAFF_ROLE_FILTER_KEY) || "";
 let listTagFilters = loadTagFilters();
+let listCityFilter = localStorage.getItem(CITY_FILTER_KEY) || "";
 let listSearch = "";
 let weeklyAutoExportDoneThisSession = false;
 
@@ -412,6 +426,60 @@ function clearListTagFilters() {
   listTagFilters = [];
   saveTagFilters();
   renderList();
+}
+
+function setListCityFilter(value) {
+  listCityFilter = value || "";
+  if (listCityFilter) localStorage.setItem(CITY_FILTER_KEY, listCityFilter);
+  else localStorage.removeItem(CITY_FILTER_KEY);
+  renderList();
+}
+
+function getRestaurantCity(r) {
+  return trim(r.city || "");
+}
+
+function getRestaurantCountry(r) {
+  return trim(r.country || "");
+}
+
+function restaurantCityKey(r) {
+  const city = getRestaurantCity(r);
+  if (!city) return "";
+  return `${city}|${getRestaurantCountry(r)}`;
+}
+
+function collectUsedCities(restaurants) {
+  const map = new Map();
+  for (const r of restaurants) {
+    const city = getRestaurantCity(r);
+    if (!city) continue;
+    const country = getRestaurantCountry(r);
+    const key = `${city}|${country}`;
+    if (!map.has(key)) map.set(key, { city, country });
+  }
+  return [...map.values()].sort((a, b) => {
+    const countryCmp = a.country.localeCompare(b.country, undefined, { sensitivity: "base" });
+    if (countryCmp) return countryCmp;
+    return a.city.localeCompare(b.city, undefined, { sensitivity: "base" });
+  });
+}
+
+function cityFilterLabel(entry) {
+  if (entry.country) return `${entry.city}, ${entry.country}`;
+  return entry.city;
+}
+
+function restaurantMatchesCityFilter(r) {
+  if (!listCityFilter) return true;
+  const [city, country] = listCityFilter.split("|");
+  return getRestaurantCity(r) === city && getRestaurantCountry(r) === (country || "");
+}
+
+function restaurantLocationLine(r) {
+  if (r.address) return r.address;
+  if (getRestaurantCity(r) && getRestaurantCountry(r)) return `${getRestaurantCity(r)}, ${getRestaurantCountry(r)}`;
+  return getRestaurantCity(r);
 }
 
 function setHomeTab(next) {
@@ -578,6 +646,8 @@ function restaurantMatchesSearch(r, query) {
   const q = query.toLowerCase();
   if (r.name.toLowerCase().includes(q)) return true;
   if ((r.address || "").toLowerCase().includes(q)) return true;
+  if (getRestaurantCity(r).toLowerCase().includes(q)) return true;
+  if (getRestaurantCountry(r).toLowerCase().includes(q)) return true;
   if ((r.note || "").toLowerCase().includes(q)) return true;
   if ((r.link || "").toLowerCase().includes(q)) return true;
   if ((r.tags || []).some((tag) => tagLabel(tag).toLowerCase().includes(q))) return true;
@@ -764,6 +834,8 @@ function normalizeRestaurant(r) {
     note: r.note || "",
     image: r.image || "",
     link: r.link || "",
+    city: r.city || "",
+    country: r.country || "",
     status: r.status || "",
     tags: Array.isArray(r.tags) ? r.tags : [],
     pinned: !!r.pinned,
@@ -819,6 +891,8 @@ async function saveRestaurant(data, id) {
     id: createId(),
     name: data.name,
     address: data.address,
+    city: data.city || "",
+    country: data.country || "",
     note: data.note || "",
     image: data.image || "",
     link: data.link || "",
@@ -1136,7 +1210,10 @@ function getSeedRestaurants() {
 }
 
 function restaurantMatchKey(restaurant) {
-  return `${(restaurant.name || "").toLowerCase().trim()}|${(restaurant.address || "").toLowerCase().trim()}`;
+  const name = (restaurant.name || "").toLowerCase().trim();
+  const address = (restaurant.address || "").toLowerCase().trim();
+  if (address) return `${name}|${address}`;
+  return `${name}|${getRestaurantCity(restaurant).toLowerCase()}|${getRestaurantCountry(restaurant).toLowerCase()}`;
 }
 
 async function importSeedRestaurants() {
@@ -1152,7 +1229,9 @@ async function importSeedRestaurants() {
     if (existingKeys.has(key)) continue;
     await saveRestaurant({
       name: seed.name,
-      address: seed.address,
+      address: seed.address || "",
+      city: seed.city || "",
+      country: seed.country || "",
       note: seed.note || "",
       tags: seed.tags || [],
       status: "want-to-try",
@@ -1329,6 +1408,9 @@ function normalizeAddressForGeocode(address) {
     lower.includes("sweden") ||
     lower.includes("denmark") ||
     lower.includes("norway") ||
+    lower.includes("finland") ||
+    lower.includes("iceland") ||
+    lower.includes("faroe") ||
     lower.includes("italy") ||
     lower.includes("united arab emirates") ||
     lower.includes("dubai")
@@ -1341,16 +1423,21 @@ function normalizeAddressForGeocode(address) {
 function geocodeCountryCodes(address) {
   const lower = (address || "").toLowerCase();
   if (lower.includes("united arab emirates") || lower.includes("dubai")) return "ae";
-  if (lower.includes("denmark") || lower.includes("copenhagen") || lower.includes("gentofte")) return "dk";
-  if (lower.includes("norway") || lower.includes("oslo")) return "no";
+  if (lower.includes("faroe")) return "fo";
+  if (lower.includes("denmark") || lower.includes("copenhagen") || lower.includes("gentofte") || lower.includes("aarhus")) return "dk";
+  if (lower.includes("norway") || lower.includes("oslo") || lower.includes("stavanger") || lower.includes("bergen")) return "no";
+  if (lower.includes("finland") || lower.includes("helsinki") || lower.includes("turku")) return "fi";
+  if (lower.includes("iceland") || lower.includes("reykjav") || lower.includes("grindav")) return "is";
   if (lower.includes("italy") || lower.includes("rome")) return "it";
-  if (lower.includes("sverige") || lower.includes("sweden") || lower.includes("stockholm")) return "se";
+  if (lower.includes("sverige") || lower.includes("sweden") || lower.includes("stockholm") || lower.includes("gothenburg") || lower.includes("malmö")) return "se";
   return "";
 }
 
 function geocodeBiasCenter(address) {
   const lower = (address || "").toLowerCase();
   if (lower.includes("dubai") || lower.includes("united arab emirates")) return [25.2048, 55.2708];
+  if (lower.includes("helsinki") || lower.includes("finland")) return [60.1699, 24.9384];
+  if (lower.includes("reykjav") || lower.includes("iceland")) return [64.1466, -21.9426];
   if (lower.includes("copenhagen") || lower.includes("denmark")) return [55.6761, 12.5683];
   if (lower.includes("oslo") || lower.includes("norway")) return [59.9139, 10.7522];
   if (lower.includes("rome") || lower.includes("italy")) return [41.9028, 12.4964];
@@ -1560,6 +1647,23 @@ function showNavigationPicker(restaurant) {
   });
 
   overlay.querySelector("#nav-cancel").addEventListener("click", close);
+}
+
+function cityFilterMarkup(cities) {
+  if (!cities.length) return "";
+  return `
+    <div class="city-filter-row">
+      <label class="sort-label" for="city-filter">${escapeHtml(t("filterByCity"))}</label>
+      <select id="city-filter" class="city-filter-select" aria-label="${escapeHtml(t("filterByCity"))}">
+        <option value="">${escapeHtml(t("allCities"))}</option>
+        ${cities
+          .map((entry) => {
+            const value = `${entry.city}|${entry.country}`;
+            return `<option value="${escapeHtml(value)}" ${listCityFilter === value ? "selected" : ""}>${escapeHtml(cityFilterLabel(entry))}</option>`;
+          })
+          .join("")}
+      </select>
+    </div>`;
 }
 
 function versionBadge() {
@@ -2099,7 +2203,9 @@ async function renderList() {
     const restaurants = sortRestaurants(allRestaurants, listSort);
     let filtered = restaurants.filter((r) => restaurantMatchesSearch(r, query));
     filtered = filtered.filter((r) => restaurantMatchesTagFilters(r));
+    filtered = filtered.filter((r) => restaurantMatchesCityFilter(r));
     const usedTags = collectUsedTags(allRestaurants);
+    const usedCities = collectUsedCities(allRestaurants);
     const counts = await Promise.all(filtered.map((r) => getStaffCount(r.id)));
 
     const tagFilterHtml = usedTags.length
@@ -2120,15 +2226,19 @@ async function renderList() {
       </div>`
       : "";
 
+    const cityFilterHtml = cityFilterMarkup(usedCities);
+
     listBodyHtml =
       filtered.length === 0
         ? `
+        ${cityFilterHtml}
         <div class="empty-state">
           <div class="icon">🍽️</div>
           <h2>${allRestaurants.length === 0 ? escapeHtml(t("noRestaurants")) : escapeHtml(t("noMatches"))}</h2>
           <p>${allRestaurants.length === 0 ? escapeHtml(t("tapToAdd")) : escapeHtml(t("trySearch"))}</p>
         </div>`
         : `
+        ${cityFilterHtml}
         ${tagFilterHtml}
         <ul class="list">
           ${filtered
@@ -2141,7 +2251,7 @@ async function renderList() {
                   <div class="info">
                     <div class="title"><span class="status-dot" style="background:${statusColor(getRestaurantStatus(r))}"></span>${r.pinned ? '<span class="pin-indicator">★</span> ' : ""}${escapeHtml(r.name)}</div>
                     ${renderTagsHtml(r.tags, { compact: true })}
-                    <div class="subtitle">${r.address ? escapeHtml(r.address) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
+                    <div class="subtitle">${restaurantLocationLine(r) ? escapeHtml(restaurantLocationLine(r)) + " · " : ""}${staffLabel(counts[i])}${r.lastVisitedAt ? " · " + escapeHtml(formatRelativeVisit(r.lastVisitedAt)) : ""}</div>
                   </div>
                   <button type="button" class="pin-btn ${r.pinned ? "pinned" : ""}" data-pin-id="${r.id}" aria-label="${escapeHtml(r.pinned ? t("unpin") : t("pin"))}">★</button>
                   <span class="chevron">›</span>
@@ -2213,6 +2323,8 @@ async function renderList() {
   });
 
   app.querySelector("#clear-tag-filters")?.addEventListener("click", clearListTagFilters);
+
+  app.querySelector("#city-filter")?.addEventListener("change", (e) => setListCityFilter(e.target.value));
 
   app.querySelectorAll(".pin-btn").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
@@ -2325,11 +2437,11 @@ async function renderDetail(id) {
         <div class="section-title">${escapeHtml(t("details"))}</div>
         <div class="card">
           ${
-            restaurant.address
+            restaurantLocationLine(restaurant)
               ? `
           <button class="address-btn" id="address-nav" type="button">
             <span class="label">${escapeHtml(t("address"))}</span>
-            <span class="address-value">${escapeHtml(restaurant.address)}</span>
+            <span class="address-value">${escapeHtml(restaurantLocationLine(restaurant))}</span>
             <span class="address-hint">${escapeHtml(t("addressHint"))}</span>
           </button>`
               : `
@@ -2478,6 +2590,8 @@ async function renderRestaurantForm(editId) {
   let link = "";
   let tags = [];
   let status = "regular";
+  let city = "";
+  let country = "";
 
   if (editId) {
     const restaurant = await getRestaurant(editId);
@@ -2487,6 +2601,8 @@ async function renderRestaurantForm(editId) {
     }
     name = restaurant.name;
     address = restaurant.address;
+    city = restaurant.city || "";
+    country = restaurant.country || "";
     note = restaurant.note || "";
     image = restaurant.image || "";
     link = restaurant.link || "";
@@ -2516,6 +2632,16 @@ async function renderRestaurantForm(editId) {
         <div class="field">
           <label for="address">${escapeHtml(t("address"))}</label>
           <textarea id="address" placeholder="${escapeHtml(t("streetCity"))}">${escapeHtml(address)}</textarea>
+        </div>
+        <div class="field field-split">
+          <div class="field-half">
+            <label for="city">${escapeHtml(t("city"))}</label>
+            <input id="city" type="text" value="${escapeHtml(city)}" placeholder="${escapeHtml(t("cityPlaceholder"))}" />
+          </div>
+          <div class="field-half">
+            <label for="country">${escapeHtml(t("country"))}</label>
+            <input id="country" type="text" value="${escapeHtml(country)}" placeholder="${escapeHtml(t("countryPlaceholder"))}" />
+          </div>
         </div>
         <div class="field">
           <label for="link">${escapeHtml(t("link"))}</label>
@@ -2548,6 +2674,8 @@ async function renderRestaurantForm(editId) {
 
   const nameInput = app.querySelector("#name");
   const addressInput = app.querySelector("#address");
+  const cityInput = app.querySelector("#city");
+  const countryInput = app.querySelector("#country");
   const linkInput = app.querySelector("#link");
   const noteInput = app.querySelector("#note");
   const saveBtn = app.querySelector("#save-btn");
@@ -2570,9 +2698,13 @@ async function renderRestaurantForm(editId) {
   app.querySelector("#restaurant-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const addressValue = trim(addressInput.value);
+    const cityValue = trim(cityInput.value);
+    const countryValue = trim(countryInput.value);
     const payload = {
       name: trim(nameInput.value),
       address: addressValue,
+      city: cityValue,
+      country: countryValue,
       link: trim(linkInput.value),
       note: trim(noteInput.value),
       image: photoPicker.getImagePayload(image),
@@ -2581,7 +2713,12 @@ async function renderRestaurantForm(editId) {
     };
     if (editId) {
       const existing = await getRestaurant(editId);
-      if (existing && addressValue !== (existing.address || "")) {
+      if (
+        existing &&
+        (addressValue !== (existing.address || "") ||
+          cityValue !== (existing.city || "") ||
+          countryValue !== (existing.country || ""))
+      ) {
         payload.lat = null;
         payload.lng = null;
         payload.geocodeQuery = "";
